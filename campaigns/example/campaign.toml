@@ -1,0 +1,3 @@
+campaign_id = "example-campaign"
+name = "Example campaign"
+recipients_file = "../../examples/recipients.example.csv"

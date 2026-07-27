@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environment
+.venv/
+
+# Environment variables and credentials
+.env
+.env.*
+!.env.example
+
+# Runtime data
+data/*
+!data/.gitkeep
+
+# Recipient data and logs
+recipients.csv
+sent_log.csv
+error_log.csv
+*.sqlite3
+*.db
+*.log
+
+# Local campaigns
+campaigns/*
+!campaigns/example/
+!campaigns/example/**
+
+# IDE and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+*.egg-info/
