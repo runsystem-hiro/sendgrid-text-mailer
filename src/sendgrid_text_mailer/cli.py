@@ -12,7 +12,8 @@ from dotenv import load_dotenv
 from .config import load_app_config
 from .database import DeliveryDatabase
 from .errors import MailerError, ValidationError
-from .service import prepare_campaign, send_campaign
+from .scaffold import create_campaign_scaffold
+from .service import prepare_campaign, prepare_delivery, send_campaign
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -21,6 +22,23 @@ def build_parser() -> argparse.ArgumentParser:
         description="Safely send personalized plain-text email through SendGrid.",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    campaign_parser = subparsers.add_parser(
+        "campaign", help="Create and manage campaign files."
+    )
+    campaign_subparsers = campaign_parser.add_subparsers(
+        dest="campaign_command", required=True
+    )
+    create_parser = campaign_subparsers.add_parser(
+        "create", help="Create a new campaign scaffold."
+    )
+    create_parser.add_argument("--campaign-id", required=True)
+    create_parser.add_argument("--name", required=True)
+    create_parser.add_argument("--recipients-file", type=Path, required=True)
+    create_parser.add_argument("--unsubscribe-url", required=True)
+    create_parser.add_argument("--output", type=Path)
+    create_parser.add_argument("--max-send-count", type=int, default=500)
+    create_parser.add_argument("--send-interval-seconds", type=float, default=1.0)
 
     for command, help_text in (
         ("validate", "Validate campaign files without contacting SendGrid."),
@@ -53,6 +71,26 @@ def _print_summary(prepared) -> None:
     print(f"Recipients  : {len(prepared.messages)}")
     print(f"Maximum     : {campaign.max_send_count}")
     print(f"Interval    : {campaign.send_interval_seconds:.2f} seconds")
+
+
+def command_campaign(args: argparse.Namespace) -> int:
+    if args.campaign_command != "create":
+        raise ValidationError(f"Unknown campaign command: {args.campaign_command}")
+    scaffold = create_campaign_scaffold(
+        campaign_id=args.campaign_id,
+        name=args.name,
+        recipients_file=args.recipients_file,
+        unsubscribe_url=args.unsubscribe_url,
+        output_dir=args.output,
+        max_send_count=args.max_send_count,
+        send_interval_seconds=args.send_interval_seconds,
+    )
+    print(f"Campaign created: {scaffold.directory}")
+    print(f"Configuration   : {scaffold.config_file}")
+    print(f"Subject         : {scaffold.subject_file}")
+    print(f"Body            : {scaffold.body_file}")
+    print("Next step       : edit subject.txt and body.txt, then run validate.")
+    return 0
 
 
 def command_validate(args: argparse.Namespace) -> int:
@@ -98,8 +136,20 @@ def command_send(args: argparse.Namespace) -> int:
     prepared = prepare_campaign(args.campaign)
     config = load_app_config()
     assert config is not None
+    plan = prepare_delivery(prepared, config=config)
     _print_summary(prepared)
-    run_id, sent, failed, skipped = send_campaign(prepared, config=config, mode="send")
+    print(f"From        : {config.from_name} <{config.from_email}>")
+    print(f"Group ID    : {config.unsubscribe_group_id}")
+    print(f"Suppressed  : {plan.suppression_count}")
+    print(f"Eligible    : {len(plan.targets)}")
+    print(f"Skipped     : {len(plan.skipped_items)}")
+    print("Suppression : verified (fail closed)")
+    run_id, sent, failed, skipped = send_campaign(
+        prepared,
+        config=config,
+        mode="send",
+        delivery_plan=plan,
+    )
     print(f"Run ID  : {run_id}")
     print(f"Sent    : {sent}")
     print(f"Failed  : {failed}")
@@ -133,6 +183,7 @@ def main(argv: list[str] | None = None) -> None:
     parser = build_parser()
     args = parser.parse_args(argv)
     handlers = {
+        "campaign": command_campaign,
         "validate": command_validate,
         "preview": command_preview,
         "test": command_test,

@@ -1,19 +1,37 @@
 # SendGrid Text Mailer
 
-SendGrid公式Python SDKを使用して、CSVの宛先へ1件ずつパーソナライズした
-`text/plain` メールを安全に送信するCLIツールです。
+SendGrid公式Python SDKを使用し、CSVの宛先へパーソナライズした
+`text/plain` メールを1件ずつ安全に送信する、日本語業務メール向けCLIです。
 
-## 主な安全設計
+## 特徴
 
-- HTML・画像・添付ファイルには対応しない
-- 開封トラッキングとクリックトラッキングをメール単位で無効化
-- SendGridの配信停止グループを送信前に取得
-- SendGrid ASMはメールへ設定せず、外部配信停止フォームのURLを本文に掲載
-- 配信停止リストを取得できない場合は送信を中止
-- `campaign_id + email` で送信済みを判定し、重複送信を防止
-- 実送信は `--confirm SEND`、テスト送信は `--confirm TEST` が必須
-- キャンペーンごとの最大送信件数を設定
-- 実行結果をSQLiteへ保存
+- HTML、画像、添付ファイルを扱わないシンプルなテキストメール専用設計
+- 開封・クリックトラッキングをメール単位で無効化
+- SendGridの配信停止グループを送信前に確認し、取得失敗時は送信を中止
+- SendGrid ASMをメールに設定せず、任意の外部配信停止フォームURLを本文へ掲載
+- `campaign_id + email` による重複送信防止
+- `validate`、`preview`、`test`、`send` を分離
+- 本番送信は `--confirm SEND`、テスト送信は `--confirm TEST` が必須
+- SQLiteによる実行履歴と送信結果の保存
+- `uv` による環境・依存関係管理
+
+## 対象外
+
+次の用途には対応しません。
+
+- HTMLメール、画像、添付ファイル
+- 開封率・クリック率の測定
+- SendGrid Dynamic Templates
+- Web管理画面、配信予約、並列送信
+- 配信停止フォーム自体の提供
+
+## 必要環境
+
+- Python 3.13
+- uv
+- SendGrid APIキー
+- SendGridで認証済みの送信元
+- SendGridの配信停止グループ
 
 ## セットアップ
 
@@ -22,19 +40,55 @@ uv sync
 Copy-Item .env.example .env
 ```
 
-`.env` にSendGrid APIキー、認証済み送信元、配信停止グループIDを設定します。
-`.env`、宛先データ、実運用キャンペーン、SQLiteデータベースはGit管理しません。
+`.env` を編集します。
 
-## キャンペーン
+```dotenv
+SENDGRID_API_KEY=your_sendgrid_api_key
+SENDGRID_FROM_EMAIL=sender@example.com
+SENDGRID_FROM_NAME=Example Sender
+SENDGRID_UNSUBSCRIBE_GROUP_ID=12345
+MAILER_DATABASE_PATH=data/sendgrid-text-mailer.sqlite3
+```
+
+`.env`、実在する宛先CSV、実運用キャンペーン、SQLiteデータベースは
+Gitへコミットしないでください。
+
+## キャンペーンの作成
+
+雛形はCLIから作成できます。
+
+```powershell
+uv run sendgrid-text-mailer campaign create `
+  --campaign-id pc-special-sale-2026-08 `
+  --name "PC special sale August 2026" `
+  --recipients-file .\data\recipients.csv `
+  --unsubscribe-url "https://example.com/unsubscribe?group_id=12345" `
+  --max-send-count 300 `
+  --send-interval-seconds 1.0
+```
+
+既定では `campaigns/<campaign-id>/` に次のファイルを作成します。
+既存ディレクトリは上書きしません。
 
 ```text
-campaigns/<campaign-name>/
+campaigns/<campaign-id>/
 ├── campaign.toml
 ├── subject.txt
 └── body.txt
 ```
 
-`campaign.toml` の例：
+作成先を変える場合は `--output` を指定します。
+
+```powershell
+uv run sendgrid-text-mailer campaign create `
+  --campaign-id sample-1 `
+  --name "Sample campaign" `
+  --recipients-file .\data\recipients.csv `
+  --unsubscribe-url "https://example.com/unsubscribe" `
+  --output .\campaigns\sample-1
+```
+
+### campaign.toml
 
 ```toml
 campaign_id = "pc-special-sale-2026-08"
@@ -45,57 +99,105 @@ send_interval_seconds = 1.0
 unsubscribe_url = "https://example.com/unsubscribe?group_id=12345"
 ```
 
-`campaign_id` は送信済み判定に使用するため、同じ配信の途中で変更しないでください。
-別の案内を送る場合は新しい `campaign_id` を使用します。
+`campaign_id` は送信済み判定に使用します。同じ配信の途中で変更せず、
+別の案内では新しいIDを使用してください。
 
-`unsubscribe_url` には、受信者が配信停止を申請できる外部フォームの完成済みURLを指定します。
-SendGrid ASMをメールへ設定しないため、SendGrid独自の配信停止リンクは自動挿入されません。
-一方、送信前の配信停止グループ確認には `.env` の
-`SENDGRID_UNSUBSCRIBE_GROUP_ID` を引き続き使用します。
+`unsubscribe_url` には、受信者が配信停止を申請できる外部フォームの
+完成済み絶対URLを指定します。SendGrid ASMは送信メールに設定されません。
 
 ## 宛先CSV
 
 ```csv
 email,last_name,first_name,company
 taro.yamada@example.com,山田,太郎,サンプル株式会社
+contact@example.net,,,テスト商事株式会社
 ```
 
 - `email` 列は必須
 - UTF-8（BOMあり・なし）に対応
-- メールアドレスは前後空白を除去し、小文字で比較
+- メールアドレスの前後空白を除去し、小文字で比較
 - 重複、不正形式、空欄が1件でもあれば送信前に中止
-- その他の列はテンプレート変数として使用可能
-- `{full_name}` は姓名から自動生成（例：`山田 太郎 様`）。姓名が空欄の場合は `ご担当者様`
-- `{recipient_block}` は会社名と宛名を改行で結合。会社名が空欄の場合は不要な空行を入れない
-- `{unsubscribe_url}` は `campaign.toml` の設定値を使用
+- その他の列はテンプレート変数として利用可能
 
-## コマンド
+### 日本語宛名
+
+`{full_name}` と `{recipient_block}` を利用できます。
+
+| 会社名 | 姓名 | `{recipient_block}` |
+|---|---|---|
+| あり | あり | 会社名＋改行＋`姓 名 様` |
+| あり | なし | 会社名＋改行＋`ご担当者様` |
+| なし | あり | `姓 名 様` |
+| なし | なし | `ご担当者様` |
+
+姓だけ、または名だけの場合も、存在する値へ `様` を付けます。
+CSVの姓名欄には敬称を含めないでください。
+
+本文例：
+
+```text
+{recipient_block}
+
+平素よりお世話になっております。
+
+本文を入力してください。
+
+▼ 配信停止はこちらから
+{unsubscribe_url}
+```
+
+## 実行手順
 
 ```powershell
-# ファイルと宛先を検証（SendGridへ接続しない）
-uv run sendgrid-text-mailer validate --campaign campaigns/example
+# 1. ファイルと宛先を検証（SendGridへ接続しない）
+uv run sendgrid-text-mailer validate --campaign .\campaigns\example
 
-# 先頭3件をプレビュー
-uv run sendgrid-text-mailer preview --campaign campaigns/example --limit 3
+# 2. 先頭3件をプレビュー
+uv run sendgrid-text-mailer preview `
+  --campaign .\campaigns\example `
+  --limit 3
 
-# 指定した1アドレスへテスト送信
+# 3. 自分宛てにテスト送信（件名へ [TEST] を自動付与）
 uv run sendgrid-text-mailer test `
-  --campaign campaigns/example `
+  --campaign .\campaigns\example `
   --to your-address@example.com `
   --confirm TEST
 
-# 本番送信
+# 4. 本番送信
 uv run sendgrid-text-mailer send `
-  --campaign campaigns/example `
+  --campaign .\campaigns\example `
   --confirm SEND
 
-# 最近の実行履歴
+# 5. 最近の実行履歴
 uv run sendgrid-text-mailer history --limit 20
 ```
 
-## 開発確認
+本番送信前には、送信元、配信停止グループID、配信停止リスト件数、
+送信可能件数、除外件数を表示します。
+
+## 配信停止の考え方
+
+1. 本文の外部フォームURLで申請を受け付ける
+2. 運用者が対象アドレスをSendGridの配信停止グループへ登録する
+3. 次回送信時に本ツールがグループをAPIで確認して除外する
+
+配信停止リストを取得できない場合は、空リストとして続行せず送信を中止します。
+外部フォームの実装・本人確認・登録作業は、このリポジトリの対象外です。
+
+## 開発
 
 ```powershell
+uv sync
 uv run ruff check .
-uv run pytest
+uv run pytest -q
 ```
+
+GitHub ActionsでもRuffとpytestを実行します。
+
+## セキュリティ
+
+認証情報や個人情報の取り扱いは [SECURITY.md](SECURITY.md) を参照してください。
+
+## ライセンス
+
+[MIT License](LICENSE)

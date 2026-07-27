@@ -22,6 +22,15 @@ class PreparedCampaign:
     messages: list[RenderedMessage]
 
 
+@dataclass(slots=True)
+class DeliveryPlan:
+    database: DeliveryDatabase
+    gateway: SendGridGateway
+    targets: list[RenderedMessage]
+    skipped_items: list[tuple[RenderedMessage, str]]
+    suppression_count: int
+
+
 def prepare_campaign(campaign_dir: Path) -> PreparedCampaign:
     campaign = load_campaign(campaign_dir)
     recipients = load_recipients(campaign.recipients_file)
@@ -55,18 +64,39 @@ def filter_send_targets(
     return targets, skipped
 
 
+def prepare_delivery(
+    prepared: PreparedCampaign,
+    *,
+    config: AppConfig,
+) -> DeliveryPlan:
+    """Retrieve suppressions and calculate the exact production delivery targets."""
+    database = DeliveryDatabase(config.database_path)
+    gateway = SendGridGateway(config)
+    unsubscribed = gateway.get_unsubscribed_emails()
+    targets, skipped_items = filter_send_targets(
+        prepared, database=database, unsubscribed=unsubscribed
+    )
+    return DeliveryPlan(
+        database=database,
+        gateway=gateway,
+        targets=targets,
+        skipped_items=skipped_items,
+        suppression_count=len(unsubscribed),
+    )
+
+
 def send_campaign(
     prepared: PreparedCampaign,
     *,
     config: AppConfig,
     mode: str,
     test_address: str | None = None,
+    delivery_plan: DeliveryPlan | None = None,
 ) -> tuple[str, int, int, int]:
-    database = DeliveryDatabase(config.database_path)
-    gateway = SendGridGateway(config)
-    unsubscribed = gateway.get_unsubscribed_emails()
-
     if mode == "test":
+        database = DeliveryDatabase(config.database_path)
+        gateway = SendGridGateway(config)
+        gateway.get_unsubscribed_emails()
         if not test_address:
             raise ValidationError("A test recipient address is required.")
         source = prepared.messages[0]
@@ -80,9 +110,11 @@ def send_campaign(
         targets = [test_message]
         skipped_items: list[tuple[RenderedMessage, str]] = []
     else:
-        targets, skipped_items = filter_send_targets(
-            prepared, database=database, unsubscribed=unsubscribed
-        )
+        plan = delivery_plan or prepare_delivery(prepared, config=config)
+        database = plan.database
+        gateway = plan.gateway
+        targets = plan.targets
+        skipped_items = plan.skipped_items
 
     run_id = str(uuid.uuid4())
     database.start_run(

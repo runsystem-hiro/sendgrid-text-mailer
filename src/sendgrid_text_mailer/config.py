@@ -71,7 +71,7 @@ def load_campaign(campaign_dir: Path) -> Campaign:
         raise ConfigurationError("name is required in campaign.toml.")
     if not recipients_raw:
         raise ConfigurationError("recipients_file is required in campaign.toml.")
-    _validate_unsubscribe_url(unsubscribe_url)
+    validate_unsubscribe_url(unsubscribe_url)
 
     max_send_count = raw.get("max_send_count", 500)
     send_interval = raw.get("send_interval_seconds", 1.0)
@@ -94,7 +94,7 @@ def load_campaign(campaign_dir: Path) -> Campaign:
     )
 
 
-def _validate_unsubscribe_url(value: str) -> None:
+def validate_unsubscribe_url(value: str) -> None:
     if not value:
         raise ConfigurationError("unsubscribe_url is required in campaign.toml.")
     parsed = urlparse(value)
