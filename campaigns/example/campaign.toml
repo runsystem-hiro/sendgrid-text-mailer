@@ -1,3 +1,5 @@
 campaign_id = "example-campaign"
 name = "Example campaign"
 recipients_file = "../../examples/recipients.example.csv"
+max_send_count = 100
+send_interval_seconds = 1.0
