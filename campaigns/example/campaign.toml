@@ -1,5 +1,6 @@
 campaign_id = "example-campaign"
 name = "Example campaign"
 recipients_file = "../../examples/recipients.example.csv"
+unsubscribe_url = "https://example.com/unsubscribe?group_id=12345"
 max_send_count = 100
 send_interval_seconds = 1.0

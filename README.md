@@ -8,6 +8,7 @@ SendGrid公式Python SDKを使用して、CSVの宛先へ1件ずつパーソナ�
 - HTML・画像・添付ファイルには対応しない
 - 開封トラッキングとクリックトラッキングをメール単位で無効化
 - SendGridの配信停止グループを送信前に取得
+- SendGrid ASMはメールへ設定せず、外部配信停止フォームのURLを本文に掲載
 - 配信停止リストを取得できない場合は送信を中止
 - `campaign_id + email` で送信済みを判定し、重複送信を防止
 - 実送信は `--confirm SEND`、テスト送信は `--confirm TEST` が必須
@@ -41,10 +42,16 @@ name = "PC special sale August 2026"
 recipients_file = "../../data/recipients.csv"
 max_send_count = 300
 send_interval_seconds = 1.0
+unsubscribe_url = "https://example.com/unsubscribe?group_id=12345"
 ```
 
 `campaign_id` は送信済み判定に使用するため、同じ配信の途中で変更しないでください。
 別の案内を送る場合は新しい `campaign_id` を使用します。
+
+`unsubscribe_url` には、受信者が配信停止を申請できる外部フォームの完成済みURLを指定します。
+SendGrid ASMをメールへ設定しないため、SendGrid独自の配信停止リンクは自動挿入されません。
+一方、送信前の配信停止グループ確認には `.env` の
+`SENDGRID_UNSUBSCRIBE_GROUP_ID` を引き続き使用します。
 
 ## 宛先CSV
 
@@ -59,6 +66,7 @@ taro.yamada@example.com,山田,太郎,サンプル株式会社
 - 重複、不正形式、空欄が1件でもあれば送信前に中止
 - その他の列はテンプレート変数として使用可能
 - `{full_name}` は自動生成（例：`山田 太郎 様`）
+- `{unsubscribe_url}` は `campaign.toml` の設定値を使用
 
 ## コマンド
 

@@ -19,6 +19,7 @@ def campaign(tmp_path: Path, subject: str, body: str) -> Campaign:
         recipients_file=tmp_path / "recipients.csv",
         subject_file=subject_path,
         body_file=body_path,
+        unsubscribe_url="https://example.com/unsubscribe?group_id=12345",
         max_send_count=10,
         send_interval_seconds=0,
     )
@@ -39,3 +40,12 @@ def test_multiline_subject_is_rejected(tmp_path: Path) -> None:
     item = campaign(tmp_path, "line1\nline2", "body")
     with pytest.raises(ValidationError, match="one line"):
         render_messages(item, [Recipient(email="user@example.com")])
+
+
+def test_render_unsubscribe_url(tmp_path: Path) -> None:
+    item = campaign(tmp_path, "Subject", "配信停止: {unsubscribe_url}")
+    message = render_messages(item, [Recipient(email="user@example.com")])[0]
+    assert (
+        message.body
+        == "配信停止: https://example.com/unsubscribe?group_id=12345"
+    )

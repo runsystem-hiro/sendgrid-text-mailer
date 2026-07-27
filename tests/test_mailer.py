@@ -39,4 +39,4 @@ def test_send_disables_tracking(monkeypatch, tmp_path: Path) -> None:
         "enable_text": False,
     }
     assert captured["tracking_settings"]["open_tracking"] == {"enable": False}
-    assert captured["asm"]["group_id"] == 12345
+    assert "asm" not in captured

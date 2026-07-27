@@ -24,6 +24,7 @@ class Campaign:
     recipients_file: Path
     subject_file: Path
     body_file: Path
+    unsubscribe_url: str
     max_send_count: int
     send_interval_seconds: float
 

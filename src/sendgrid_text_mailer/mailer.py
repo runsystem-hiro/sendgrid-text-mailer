@@ -7,7 +7,6 @@ from collections.abc import Iterable
 
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import (
-    Asm,
     ClickTracking,
     From,
     Mail,
@@ -65,8 +64,6 @@ class SendGridGateway:
             subject=message.subject,
             plain_text_content=PlainTextContent(message.body),
         )
-        mail.asm = Asm(group_id=self.config.unsubscribe_group_id)
-
         tracking = TrackingSettings()
         tracking.click_tracking = ClickTracking(enable=False, enable_text=False)
         tracking.open_tracking = OpenTracking(enable=False)

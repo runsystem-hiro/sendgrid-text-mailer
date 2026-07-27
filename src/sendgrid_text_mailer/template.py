@@ -43,7 +43,10 @@ def render_messages(campaign: Campaign, recipients: list[Recipient]) -> list[Ren
     errors: list[str] = []
 
     for recipient in recipients:
-        context = recipient.template_context()
+        context = {
+            **recipient.template_context(),
+            "unsubscribe_url": campaign.unsubscribe_url,
+        }
         missing = sorted(field for field in required_fields if field not in context)
         if missing:
             errors.append(f"{recipient.email}: missing template fields: {', '.join(missing)}")

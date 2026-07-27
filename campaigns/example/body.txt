@@ -9,3 +9,6 @@
 ご不明な点がございましたら、担当者までお問い合わせください。
 
 Example Sender
+
+▼ 配信停止はこちらから
+{unsubscribe_url}

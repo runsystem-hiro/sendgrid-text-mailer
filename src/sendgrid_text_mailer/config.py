@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import tomllib
 from pathlib import Path
+from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 
@@ -63,12 +64,14 @@ def load_campaign(campaign_dir: Path) -> Campaign:
     campaign_id = str(raw.get("campaign_id", "")).strip()
     name = str(raw.get("name", "")).strip()
     recipients_raw = str(raw.get("recipients_file", "")).strip()
+    unsubscribe_url = str(raw.get("unsubscribe_url", "")).strip()
     if not campaign_id:
         raise ConfigurationError("campaign_id is required in campaign.toml.")
     if not name:
         raise ConfigurationError("name is required in campaign.toml.")
     if not recipients_raw:
         raise ConfigurationError("recipients_file is required in campaign.toml.")
+    _validate_unsubscribe_url(unsubscribe_url)
 
     max_send_count = raw.get("max_send_count", 500)
     send_interval = raw.get("send_interval_seconds", 1.0)
@@ -85,6 +88,19 @@ def load_campaign(campaign_dir: Path) -> Campaign:
         recipients_file=recipients_path,
         subject_file=directory / "subject.txt",
         body_file=directory / "body.txt",
+        unsubscribe_url=unsubscribe_url,
         max_send_count=max_send_count,
         send_interval_seconds=float(send_interval),
     )
+
+
+def _validate_unsubscribe_url(value: str) -> None:
+    if not value:
+        raise ConfigurationError("unsubscribe_url is required in campaign.toml.")
+    parsed = urlparse(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ConfigurationError(
+            "unsubscribe_url must be an absolute HTTP or HTTPS URL."
+        )
+    if parsed.username or parsed.password:
+        raise ConfigurationError("unsubscribe_url must not contain credentials.")

@@ -13,6 +13,7 @@ def test_filter_send_targets(tmp_path: Path) -> None:
         recipients_file=tmp_path / "recipients.csv",
         subject_file=tmp_path / "subject.txt",
         body_file=tmp_path / "body.txt",
+        unsubscribe_url="https://example.com/unsubscribe?group_id=12345",
         max_send_count=10,
         send_interval_seconds=0,
     )
