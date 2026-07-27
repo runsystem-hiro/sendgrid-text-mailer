@@ -26,14 +26,14 @@ def campaign(tmp_path: Path, subject: str, body: str) -> Campaign:
 
 
 def test_render_message(tmp_path: Path) -> None:
-    item = campaign(tmp_path, "{company}様へのご案内", "{full_name}\n本文")
+    item = campaign(tmp_path, "{company}様へのご案内", "{recipient_block}\n本文")
     recipient = Recipient(
         email="user@example.com",
         fields={"company": "サンプル株式会社", "last_name": "山田", "first_name": "太郎"},
     )
     message = render_messages(item, [recipient])[0]
     assert message.subject == "サンプル株式会社様へのご案内"
-    assert message.body.startswith("山田 太郎 様")
+    assert message.body.startswith("サンプル株式会社\n山田 太郎 様")
 
 
 def test_multiline_subject_is_rejected(tmp_path: Path) -> None:

@@ -39,10 +39,20 @@ class Recipient:
         last_name = self.fields.get("last_name", "").strip()
         first_name = self.fields.get("first_name", "").strip()
         name = " ".join(part for part in (last_name, first_name) if part)
-        return f"{name} 様" if name else "お客様"
+        return f"{name} 様" if name else "ご担当者様"
+
+    @property
+    def recipient_block(self) -> str:
+        company = self.fields.get("company", "").strip()
+        return f"{company}\n{self.full_name}" if company else self.full_name
 
     def template_context(self) -> dict[str, Any]:
-        return {**self.fields, "email": self.email, "full_name": self.full_name}
+        return {
+            **self.fields,
+            "email": self.email,
+            "full_name": self.full_name,
+            "recipient_block": self.recipient_block,
+        }
 
 
 @dataclass(frozen=True, slots=True)

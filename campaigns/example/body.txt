@@ -1,5 +1,4 @@
-{company}
-{full_name}
+{recipient_block}
 
 平素よりお世話になっております。
 
