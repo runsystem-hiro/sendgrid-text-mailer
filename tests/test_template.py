@@ -7,7 +7,12 @@ from sendgrid_text_mailer.models import Campaign, Recipient
 from sendgrid_text_mailer.template import render_messages
 
 
-def campaign(tmp_path: Path, subject: str, body: str) -> Campaign:
+def campaign(
+    tmp_path: Path,
+    subject: str,
+    body: str,
+    unsubscribe_url: str = "https://example.com/unsubscribe?group_id=12345",
+) -> Campaign:
     subject_path = tmp_path / "subject.txt"
     body_path = tmp_path / "body.txt"
     subject_path.write_text(subject, encoding="utf-8")
@@ -19,7 +24,7 @@ def campaign(tmp_path: Path, subject: str, body: str) -> Campaign:
         recipients_file=tmp_path / "recipients.csv",
         subject_file=subject_path,
         body_file=body_path,
-        unsubscribe_url="https://example.com/unsubscribe?group_id=12345",
+        unsubscribe_url=unsubscribe_url,
         max_send_count=10,
         send_interval_seconds=0,
     )
@@ -49,3 +54,10 @@ def test_render_unsubscribe_url(tmp_path: Path) -> None:
         message.body
         == "配信停止: https://example.com/unsubscribe?group_id=12345"
     )
+
+
+def test_unsubscribe_url_requires_campaign_setting(tmp_path: Path) -> None:
+    item = campaign(tmp_path, "Subject", "配信停止: {unsubscribe_url}", unsubscribe_url="")
+
+    with pytest.raises(ValidationError, match="not set in campaign.toml"):
+        render_messages(item, [Recipient(email="user@example.com")])

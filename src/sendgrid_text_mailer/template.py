@@ -39,6 +39,10 @@ def render_messages(campaign: Campaign, recipients: list[Recipient]) -> list[Ren
         raise ValidationError("subject.txt must contain exactly one line.")
 
     required_fields = template_fields(subject_template) | template_fields(body_template)
+    if "unsubscribe_url" in required_fields and not campaign.unsubscribe_url:
+        raise ValidationError(
+            "unsubscribe_url is used in a template but is not set in campaign.toml."
+        )
     messages: list[RenderedMessage] = []
     errors: list[str] = []
 

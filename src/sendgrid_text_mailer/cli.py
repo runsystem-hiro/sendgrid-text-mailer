@@ -35,7 +35,7 @@ def build_parser() -> argparse.ArgumentParser:
     create_parser.add_argument("--campaign-id", required=True)
     create_parser.add_argument("--name", required=True)
     create_parser.add_argument("--recipients-file", type=Path, required=True)
-    create_parser.add_argument("--unsubscribe-url", required=True)
+    create_parser.add_argument("--unsubscribe-url")
     create_parser.add_argument("--output", type=Path)
     create_parser.add_argument("--max-send-count", type=int, default=500)
     create_parser.add_argument("--send-interval-seconds", type=float, default=1.0)
@@ -139,6 +139,10 @@ def command_send(args: argparse.Namespace) -> int:
     plan = prepare_delivery(prepared, config=config)
     _print_summary(prepared)
     print(f"From        : {config.from_name} <{config.from_email}>")
+    if config.reply_to_list:
+        print(f"Reply-To    : {', '.join(config.reply_to_list)}")
+    else:
+        print("Reply-To    : not set (replies go to the From address)")
     print(f"Group ID    : {config.unsubscribe_group_id}")
     print(f"Suppressed  : {plan.suppression_count}")
     print(f"Eligible    : {len(plan.targets)}")

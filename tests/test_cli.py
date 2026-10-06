@@ -18,11 +18,10 @@ def test_campaign_create_parser() -> None:
             "Sample",
             "--recipients-file",
             "data/recipients.csv",
-            "--unsubscribe-url",
-            "https://example.com/unsubscribe",
         ]
     )
 
     assert args.command == "campaign"
     assert args.campaign_command == "create"
     assert args.campaign_id == "sample-1"
+    assert args.unsubscribe_url is None

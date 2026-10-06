@@ -26,7 +26,7 @@ def create_campaign_scaffold(
     campaign_id: str,
     name: str,
     recipients_file: Path,
-    unsubscribe_url: str,
+    unsubscribe_url: str | None = None,
     output_dir: Path | None = None,
     max_send_count: int = 500,
     send_interval_seconds: float = 1.0,
@@ -45,7 +45,8 @@ def create_campaign_scaffold(
     if send_interval_seconds < 0:
         raise ValidationError("send_interval_seconds must not be negative.")
 
-    validate_unsubscribe_url(unsubscribe_url)
+    if unsubscribe_url:
+        validate_unsubscribe_url(unsubscribe_url)
 
     directory = output_dir or Path("campaigns") / campaign_id
     directory = directory.resolve()
@@ -70,18 +71,22 @@ def create_campaign_scaffold(
     subject_file = directory / "subject.txt"
     body_file = directory / "body.txt"
 
+    config_lines = [
+        f'campaign_id = "{campaign_id}"',
+        f'name = "{_escape_toml(name)}"',
+        f'recipients_file = "{relative_recipients.as_posix()}"',
+    ]
+    if unsubscribe_url:
+        config_lines.append(f'unsubscribe_url = "{_escape_toml(unsubscribe_url)}"')
+    config_lines.extend(
+        [
+            f"max_send_count = {max_send_count}",
+            f"send_interval_seconds = {send_interval_seconds}",
+            "",
+        ]
+    )
     config_file.write_text(
-        "\n".join(
-            [
-                f'campaign_id = "{campaign_id}"',
-                f'name = "{_escape_toml(name)}"',
-                f'recipients_file = "{relative_recipients.as_posix()}"',
-                f'unsubscribe_url = "{_escape_toml(unsubscribe_url)}"',
-                f"max_send_count = {max_send_count}",
-                f"send_interval_seconds = {send_interval_seconds}",
-                "",
-            ]
-        ),
+        "\n".join(config_lines),
         encoding="utf-8",
     )
 
@@ -90,20 +95,27 @@ def create_campaign_scaffold(
         encoding="utf-8",
     )
 
-    body_file.write_text(
-        "\n".join(
+    body_lines = [
+        "{recipient_block}",
+        "",
+        "平素よりお世話になっております。",
+        "",
+        "本文を入力してください。",
+        "",
+    ]
+    if unsubscribe_url:
+        body_lines.extend(["▼ 配信停止はこちらから", "{unsubscribe_url}"])
+    else:
+        body_lines.extend(
             [
-                "{recipient_block}",
-                "",
-                "平素よりお世話になっております。",
-                "",
-                "本文を入力してください。",
-                "",
-                "▼ 配信停止はこちらから",
-                "{unsubscribe_url}",
-                "",
+                "今後、このようなご案内が不要な場合は、",
+                "本メールに「配信停止」とご返信ください。",
+                "以後のご案内を停止いたします。",
             ]
-        ),
+        )
+    body_lines.append("")
+    body_file.write_text(
+        "\n".join(body_lines),
         encoding="utf-8",
     )
 
