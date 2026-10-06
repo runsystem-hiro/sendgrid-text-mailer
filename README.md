@@ -50,9 +50,14 @@ Copy-Item .env.example .env
 SENDGRID_API_KEY=your_sendgrid_api_key
 SENDGRID_FROM_EMAIL=sender@example.com
 SENDGRID_FROM_NAME=Example Sender
+SENDGRID_REPLY_TO_LIST=first-reply@example.com,second-reply@example.com
 SENDGRID_UNSUBSCRIBE_GROUP_ID=12345
 MAILER_DATABASE_PATH=data/sendgrid-text-mailer.sqlite3
 ```
+
+`SENDGRID_REPLY_TO_LIST` は、受信者が通常の「返信」をした際の宛先です。複数指定する場合は
+カンマ区切りで指定します。設定すると、すべてのアドレスへ返信が届きます。未設定の場合は、
+返信先は `SENDGRID_FROM_EMAIL` になります。本番送信前の確認表示に Reply-To の設定値を表示します。
 
 `.env`、実在する宛先CSV、実運用キャンペーン、SQLiteデータベースは
 Gitへコミットしないでください。
@@ -106,8 +111,8 @@ unsubscribe_url = "https://example.com/unsubscribe?group_id=12345"
 `campaign_id` は送信済み判定に使用します。同じ配信の途中で変更せず、
 別の案内では新しいIDを使用してください。
 
-`unsubscribe_url` には、受信者が配信停止を申請できる外部フォームの
-完成済み絶対URLを指定します。SendGrid ASMは送信メールに設定されません。
+`unsubscribe_url` には、受信者が配信停止を申請できる外部フォームの完成済み絶対 URL を指定します。
+本文に `{unsubscribe_url}` を記載すると、その URL に置き換わります。SendGrid ASM は送信メールに設定しません。
 
 ## 宛先CSV
 
@@ -181,12 +186,12 @@ uv run sendgrid-text-mailer history --limit 20
 
 ## 配信停止の考え方
 
-1. 本文の外部フォームURLで申請を受け付ける
+1. 本文の外部フォーム URL で申請を受け付ける
 2. 運用者が対象アドレスをSendGridの配信停止グループへ登録する
 3. 次回送信時に本ツールがグループをAPIで確認して除外する
 
 配信停止リストを取得できない場合は、空リストとして続行せず送信を中止します。
-外部フォームの実装・本人確認・登録作業は、このリポジトリの対象外です。
+外部フォームの実装・本人確認・グループ登録作業は、このリポジトリの対象外です。
 
 ## 開発
 

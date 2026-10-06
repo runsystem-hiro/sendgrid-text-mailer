@@ -6,6 +6,23 @@
 
 ---
 
+## 0. 返信先を設定する
+
+`.env` に、返信を受け取る担当者の業務用メールアドレスをカンマ区切りで設定します。
+
+```dotenv
+SENDGRID_REPLY_TO_LIST=first-reply@example.com,second-reply@example.com
+SENDGRID_UNSUBSCRIBE_GROUP_ID=<配信停止グループID>
+```
+
+受信者が通常の「返信」をすると、指定した全アドレスへ届きます。アドレスを未設定にした場合、
+返信先は送信元メールアドレスです。本番送信前に表示される `Reply-To` が想定どおりであることを
+必ず確認してください。
+
+`SENDGRID_UNSUBSCRIBE_GROUP_ID` には、送信対象に対応する配信停止グループの ID を設定します。
+
+---
+
 ## 1. リポジトリのルートを開く
 
 PowerShellで `sendgrid-text-mailer` フォルダを開きます。
@@ -60,7 +77,8 @@ uv run sendgrid-text-mailer campaign create `
   --unsubscribe-url "https://example.com/unsubscribe"
 ```
 
-実運用では、指定された配信停止フォームURLを使用してください。
+実運用では、指定された配信停止フォーム URL を使用してください。フォーム申請者は
+`SENDGRID_UNSUBSCRIBE_GROUP_ID` の配信停止グループへ登録します。
 
 作成される構成：
 
@@ -123,7 +141,7 @@ campaigns/pc-sale-2026-08/body.txt
 ```
 
 - `{recipient_block}` は会社名と宛名に置き換わります
-- `{unsubscribe_url}` は配信停止フォームURLに置き換わります
+- `{unsubscribe_url}` は配信停止フォーム URL に置き換わります
 
 ---
 
@@ -152,7 +170,7 @@ uv run sendgrid-text-mailer preview `
 - 件名
 - 本文
 - 改行
-- 配信停止URL
+- 配信停止 URL
 
 この操作ではメールは送信されません。
 
@@ -217,7 +235,7 @@ uv run sendgrid-text-mailer campaign create `
   --campaign-id <キャンペーンID> `
   --name "<キャンペーン名>" `
   --recipients-file .\data\<宛先CSV> `
-  --unsubscribe-url "<配信停止URL>"
+  --unsubscribe-url "<配信停止フォームURL>"
 
 # 3. subject.txt と body.txt を編集
 

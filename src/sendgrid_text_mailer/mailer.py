@@ -12,6 +12,7 @@ from sendgrid.helpers.mail import (
     Mail,
     OpenTracking,
     PlainTextContent,
+    ReplyTo,
     To,
     TrackingSettings,
 )
@@ -68,6 +69,8 @@ class SendGridGateway:
         tracking.click_tracking = ClickTracking(enable=False, enable_text=False)
         tracking.open_tracking = OpenTracking(enable=False)
         mail.tracking_settings = tracking
+        if self.config.reply_to_list:
+            mail.reply_to_list = [ReplyTo(address) for address in self.config.reply_to_list]
 
         try:
             response = self.client.send(mail)

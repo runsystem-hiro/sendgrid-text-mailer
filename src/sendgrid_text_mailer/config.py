@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 
 from .errors import ConfigurationError
 from .models import AppConfig, Campaign
+from .recipients import EMAIL_PATTERN, normalize_email
 
 DEFAULT_DATABASE_PATH = Path("data/sendgrid-text-mailer.sqlite3")
 
@@ -20,6 +21,33 @@ def _required_env(name: str) -> str:
     if not value:
         raise ConfigurationError(f"Required environment variable is missing: {name}")
     return value
+
+
+def _load_reply_to_list() -> tuple[str, ...]:
+    """Load and validate optional comma-separated reply addresses."""
+    raw = os.getenv("SENDGRID_REPLY_TO_LIST", "")
+    if not raw.strip():
+        return ()
+
+    addresses: list[str] = []
+    seen: set[str] = set()
+    for value in raw.split(","):
+        address = normalize_email(value)
+        if not address:
+            raise ConfigurationError(
+                "SENDGRID_REPLY_TO_LIST must not contain empty email addresses."
+            )
+        if not EMAIL_PATTERN.fullmatch(address):
+            raise ConfigurationError(
+                f"SENDGRID_REPLY_TO_LIST contains an invalid email address: {address}"
+            )
+        if address in seen:
+            raise ConfigurationError(
+                f"SENDGRID_REPLY_TO_LIST contains a duplicate email address: {address}"
+            )
+        seen.add(address)
+        addresses.append(address)
+    return tuple(addresses)
 
 
 def load_app_config(*, require_credentials: bool = True) -> AppConfig | None:
@@ -45,6 +73,7 @@ def load_app_config(*, require_credentials: bool = True) -> AppConfig | None:
         from_name=_required_env("SENDGRID_FROM_NAME"),
         unsubscribe_group_id=group_id,
         database_path=database_path,
+        reply_to_list=_load_reply_to_list(),
     )
 
 
@@ -71,7 +100,8 @@ def load_campaign(campaign_dir: Path) -> Campaign:
         raise ConfigurationError("name is required in campaign.toml.")
     if not recipients_raw:
         raise ConfigurationError("recipients_file is required in campaign.toml.")
-    validate_unsubscribe_url(unsubscribe_url)
+    if unsubscribe_url:
+        validate_unsubscribe_url(unsubscribe_url)
 
     max_send_count = raw.get("max_send_count", 500)
     send_interval = raw.get("send_interval_seconds", 1.0)

@@ -14,6 +14,7 @@ class AppConfig:
     from_name: str
     unsubscribe_group_id: int
     database_path: Path
+    reply_to_list: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
