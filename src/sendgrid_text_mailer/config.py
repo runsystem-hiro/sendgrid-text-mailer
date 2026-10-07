@@ -14,6 +14,8 @@ from .models import AppConfig, Campaign
 from .recipients import EMAIL_PATTERN, normalize_email
 
 DEFAULT_DATABASE_PATH = Path("data/sendgrid-text-mailer.sqlite3")
+MAX_ATTACHMENT_FILE_BYTES = 10 * 1024 * 1024
+MAX_ATTACHMENT_TOTAL_BYTES = 15 * 1024 * 1024
 
 
 def _required_env(name: str) -> str:
@@ -111,6 +113,7 @@ def load_campaign(campaign_dir: Path) -> Campaign:
         raise ConfigurationError("send_interval_seconds must be zero or greater.")
 
     recipients_path = (directory / recipients_raw).resolve()
+    attachment_files = _load_attachment_files(directory, raw.get("attachments"))
     return Campaign(
         campaign_id=campaign_id,
         name=name,
@@ -121,7 +124,57 @@ def load_campaign(campaign_dir: Path) -> Campaign:
         unsubscribe_url=unsubscribe_url,
         max_send_count=max_send_count,
         send_interval_seconds=float(send_interval),
+        attachment_files=attachment_files,
     )
+
+
+def _load_attachment_files(
+    directory: Path, attachments_raw: object | None
+) -> tuple[Path, ...]:
+    if attachments_raw is None:
+        return ()
+    if not isinstance(attachments_raw, list):
+        raise ConfigurationError("attachments must be an array of PDF file paths.")
+
+    attachment_files: list[Path] = []
+    seen: set[Path] = set()
+    total_size = 0
+    for index, raw_path in enumerate(attachments_raw, start=1):
+        if not isinstance(raw_path, str) or not raw_path.strip():
+            raise ConfigurationError(
+                f"attachments[{index}] must be a non-empty file path string."
+            )
+        path = (directory / raw_path).resolve()
+        if path.suffix.lower() != ".pdf":
+            raise ConfigurationError(f"Attachment must be a PDF file: {path}")
+        if path in seen:
+            raise ConfigurationError(f"Attachment is specified more than once: {path}")
+        if not path.is_file():
+            raise ConfigurationError(f"Attachment file not found: {path}")
+        try:
+            size = path.stat().st_size
+            with path.open("rb") as file:
+                signature = file.read(5)
+        except OSError as exc:
+            raise ConfigurationError(f"Attachment file cannot be read: {path}") from exc
+        if size == 0:
+            raise ConfigurationError(f"Attachment file is empty: {path}")
+        if size > MAX_ATTACHMENT_FILE_BYTES:
+            raise ConfigurationError(
+                f"Attachment exceeds the {MAX_ATTACHMENT_FILE_BYTES // (1024 * 1024)} MB "
+                f"per-file limit: {path}"
+            )
+        total_size += size
+        if total_size > MAX_ATTACHMENT_TOTAL_BYTES:
+            raise ConfigurationError(
+                f"Attachments exceed the {MAX_ATTACHMENT_TOTAL_BYTES // (1024 * 1024)} MB "
+                "total limit."
+            )
+        if signature != b"%PDF-":
+            raise ConfigurationError(f"Attachment is not a valid PDF file: {path}")
+        seen.add(path)
+        attachment_files.append(path)
+    return tuple(attachment_files)
 
 
 def validate_unsubscribe_url(value: str) -> None:

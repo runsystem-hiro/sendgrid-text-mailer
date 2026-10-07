@@ -71,6 +71,10 @@ def _print_summary(prepared) -> None:
     print(f"Recipients  : {len(prepared.messages)}")
     print(f"Maximum     : {campaign.max_send_count}")
     print(f"Interval    : {campaign.send_interval_seconds:.2f} seconds")
+    if campaign.attachment_files:
+        print("Attachments:")
+        for path in campaign.attachment_files:
+            print(f"  - {path.name} ({path.stat().st_size / (1024 * 1024):.1f} MB)")
 
 
 def command_campaign(args: argparse.Namespace) -> int:

@@ -1,8 +1,8 @@
 from pathlib import Path
 from types import SimpleNamespace
 
-from sendgrid_text_mailer.mailer import SendGridGateway
-from sendgrid_text_mailer.models import AppConfig, Recipient, RenderedMessage
+from sendgrid_text_mailer.mailer import SendGridGateway, prepare_attachments
+from sendgrid_text_mailer.models import AppConfig, PreparedAttachment, Recipient, RenderedMessage
 
 
 def config(tmp_path: Path, reply_to_list: tuple[str, ...] = ()) -> AppConfig:
@@ -67,3 +67,48 @@ def test_send_sets_all_configured_reply_to_addresses(monkeypatch, tmp_path: Path
         {"email": "kurosawa@example.com"},
         {"email": "hiro@example.com"},
     ]
+
+
+def test_send_adds_pdf_attachments_without_changing_plain_text(monkeypatch, tmp_path: Path) -> None:
+    gateway = SendGridGateway(config(tmp_path))
+    captured = {}
+
+    def fake_send(mail):
+        captured.update(mail.get())
+        return SimpleNamespace(status_code=202, body=b"", headers={})
+
+    monkeypatch.setattr(gateway.client, "send", fake_send)
+    gateway.send(
+        RenderedMessage(Recipient(email="user@example.com"), "Subject", "Body"),
+        (
+            PreparedAttachment(filename="guide.pdf", encoded_content="cGRm"),
+            PreparedAttachment(filename="application.pdf", encoded_content="cGRmMg=="),
+        ),
+    )
+
+    assert captured["content"] == [{"type": "text/plain", "value": "Body"}]
+    assert captured["attachments"] == [
+        {
+            "content": "cGRm",
+            "filename": "guide.pdf",
+            "type": "application/pdf",
+            "disposition": "attachment",
+        },
+        {
+            "content": "cGRmMg==",
+            "filename": "application.pdf",
+            "type": "application/pdf",
+            "disposition": "attachment",
+        },
+    ]
+
+
+def test_prepare_attachments_encodes_each_file_once(tmp_path: Path) -> None:
+    pdf = tmp_path / "guide.pdf"
+    pdf.write_bytes(b"%PDF-1.7\nexample")
+
+    attachments = prepare_attachments((pdf,))
+
+    assert attachments == (
+        PreparedAttachment(filename="guide.pdf", encoded_content="JVBERi0xLjcKZXhhbXBsZQ=="),
+    )

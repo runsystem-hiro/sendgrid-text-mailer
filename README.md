@@ -9,7 +9,8 @@ SendGrid公式Python SDKを使用し、CSVの宛先へパーソナライズし�
 
 ## 特徴
 
-- HTML、画像、添付ファイルを扱わないシンプルなテキストメール専用設計
+- HTMLや本文内画像を扱わないシンプルなテキストメール専用設計
+- PDFファイルの通常添付に対応
 - 開封・クリックトラッキングをメール単位で無効化
 - SendGridの配信停止グループを送信前に確認し、取得失敗時は送信を中止
 - SendGrid ASMをメールに設定せず、任意の外部配信停止フォームURLを本文へ掲載
@@ -23,7 +24,9 @@ SendGrid公式Python SDKを使用し、CSVの宛先へパーソナライズし�
 
 次の用途には対応しません。
 
-- HTMLメール、画像、添付ファイル
+- HTMLメール
+- 本文内画像、インライン画像
+- PDF以外の添付ファイル
 - 開封率・クリック率の測定
 - SendGrid Dynamic Templates
 - Web管理画面、配信予約、並列送信
@@ -83,7 +86,9 @@ uv run sendgrid-text-mailer campaign create `
 campaigns/<campaign-id>/
 ├── campaign.toml
 ├── subject.txt
-└── body.txt
+├── body.txt
+└── attachments/
+    └── guide.pdf
 ```
 
 作成先を変える場合は `--output` を指定します。
@@ -106,6 +111,11 @@ recipients_file = "../../data/recipients.csv"
 max_send_count = 300
 send_interval_seconds = 1.0
 unsubscribe_url = "https://example.com/unsubscribe?group_id=12345"
+
+# Optional: PDF files only, relative to this campaign directory.
+attachments = [
+  "attachments/guide.pdf",
+]
 ```
 
 `campaign_id` は送信済み判定に使用します。同じ配信の途中で変更せず、
@@ -113,6 +123,17 @@ unsubscribe_url = "https://example.com/unsubscribe?group_id=12345"
 
 `unsubscribe_url` には、受信者が配信停止を申請できる外部フォームの完成済み絶対 URL を指定します。
 本文に `{unsubscribe_url}` を記載すると、その URL に置き換わります。SendGrid ASM は送信メールに設定しません。
+
+### PDF添付
+
+`attachments` は省略可能です。指定する場合はキャンペーンディレクトリからの相対パスで、PDFのみを配列で指定します。複数PDFを指定できます。
+
+- 1ファイル上限: 10 MiB
+- 添付合計上限: 15 MiB
+- 空ファイル、重複、存在しないファイル、PDFヘッダーを持たないファイルは `validate` の時点で拒否
+- 添付内容はログへ出力しません
+
+実運用のPDFはGitへコミットしないでください。`campaigns/*/attachments/` は既存のローカルキャンペーン除外ルールにより追跡対象外です。`preview`、`test`、`send` では添付予定のファイル名とサイズを表示します。テスト送信にも本番と同じPDFを添付します。
 
 ## 宛先CSV
 

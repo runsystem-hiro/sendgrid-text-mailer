@@ -10,8 +10,8 @@ from pathlib import Path
 from .config import load_campaign
 from .database import DeliveryDatabase
 from .errors import ValidationError
-from .mailer import SendGridGateway
-from .models import AppConfig, Campaign, RenderedMessage
+from .mailer import SendGridGateway, prepare_attachments
+from .models import AppConfig, Campaign, PreparedAttachment, RenderedMessage
 from .recipients import load_recipients, normalize_email
 from .template import render_messages
 
@@ -20,6 +20,7 @@ from .template import render_messages
 class PreparedCampaign:
     campaign: Campaign
     messages: list[RenderedMessage]
+    attachments: tuple[PreparedAttachment, ...] = ()
 
 
 @dataclass(slots=True)
@@ -40,7 +41,12 @@ def prepare_campaign(campaign_dir: Path) -> PreparedCampaign:
             f"Recipient count {len(messages)} exceeds max_send_count "
             f"({campaign.max_send_count})."
         )
-    return PreparedCampaign(campaign=campaign, messages=messages)
+    attachments = prepare_attachments(campaign.attachment_files)
+    return PreparedCampaign(
+        campaign=campaign,
+        messages=messages,
+        attachments=attachments,
+    )
 
 
 def filter_send_targets(
@@ -136,7 +142,7 @@ def send_campaign(
     try:
         for index, message in enumerate(targets):
             try:
-                result = gateway.send(message)
+                result = gateway.send(message, prepared.attachments)
             except Exception as exc:
                 failed += 1
                 database.record_delivery(
