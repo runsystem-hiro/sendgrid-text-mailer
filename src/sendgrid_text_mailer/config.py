@@ -16,6 +16,12 @@ from .recipients import EMAIL_PATTERN, normalize_email
 DEFAULT_DATABASE_PATH = Path("data/sendgrid-text-mailer.sqlite3")
 MAX_ATTACHMENT_FILE_BYTES = 10 * 1024 * 1024
 MAX_ATTACHMENT_TOTAL_BYTES = 15 * 1024 * 1024
+ALLOWED_ATTACHMENT_TYPES: dict[str, tuple[str, bytes]] = {
+    ".pdf": ("application/pdf", b"%PDF-"),
+    ".png": ("image/png", b"\x89PNG\r\n\x1a\n"),
+    ".jpg": ("image/jpeg", b"\xff\xd8\xff"),
+    ".jpeg": ("image/jpeg", b"\xff\xd8\xff"),
+}
 
 
 def _required_env(name: str) -> str:
@@ -134,7 +140,9 @@ def _load_attachment_files(
     if attachments_raw is None:
         return ()
     if not isinstance(attachments_raw, list):
-        raise ConfigurationError("attachments must be an array of PDF file paths.")
+        raise ConfigurationError(
+            "attachments must be an array of PDF, PNG, or JPEG file paths."
+        )
 
     attachment_files: list[Path] = []
     seen: set[Path] = set()
@@ -145,8 +153,11 @@ def _load_attachment_files(
                 f"attachments[{index}] must be a non-empty file path string."
             )
         path = (directory / raw_path).resolve()
-        if path.suffix.lower() != ".pdf":
-            raise ConfigurationError(f"Attachment must be a PDF file: {path}")
+        attachment_type = ALLOWED_ATTACHMENT_TYPES.get(path.suffix.lower())
+        if attachment_type is None:
+            raise ConfigurationError(
+                f"Attachment must be a PDF, PNG, or JPEG file: {path}"
+            )
         if path in seen:
             raise ConfigurationError(f"Attachment is specified more than once: {path}")
         if not path.is_file():
@@ -154,7 +165,7 @@ def _load_attachment_files(
         try:
             size = path.stat().st_size
             with path.open("rb") as file:
-                signature = file.read(5)
+                signature = file.read(len(attachment_type[1]))
         except OSError as exc:
             raise ConfigurationError(f"Attachment file cannot be read: {path}") from exc
         if size == 0:
@@ -170,8 +181,10 @@ def _load_attachment_files(
                 f"Attachments exceed the {MAX_ATTACHMENT_TOTAL_BYTES // (1024 * 1024)} MB "
                 "total limit."
             )
-        if signature != b"%PDF-":
-            raise ConfigurationError(f"Attachment is not a valid PDF file: {path}")
+        if signature != attachment_type[1]:
+            raise ConfigurationError(
+                f"Attachment does not match its expected file type: {path}"
+            )
         seen.add(path)
         attachment_files.append(path)
     return tuple(attachment_files)

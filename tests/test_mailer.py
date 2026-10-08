@@ -69,7 +69,9 @@ def test_send_sets_all_configured_reply_to_addresses(monkeypatch, tmp_path: Path
     ]
 
 
-def test_send_adds_pdf_attachments_without_changing_plain_text(monkeypatch, tmp_path: Path) -> None:
+def test_send_adds_allowed_attachments_without_changing_plain_text(
+    monkeypatch, tmp_path: Path
+) -> None:
     gateway = SendGridGateway(config(tmp_path))
     captured = {}
 
@@ -81,8 +83,15 @@ def test_send_adds_pdf_attachments_without_changing_plain_text(monkeypatch, tmp_
     gateway.send(
         RenderedMessage(Recipient(email="user@example.com"), "Subject", "Body"),
         (
-            PreparedAttachment(filename="guide.pdf", encoded_content="cGRm"),
-            PreparedAttachment(filename="application.pdf", encoded_content="cGRmMg=="),
+            PreparedAttachment(
+                filename="guide.pdf", mime_type="application/pdf", encoded_content="cGRm"
+            ),
+            PreparedAttachment(
+                filename="product.png", mime_type="image/png", encoded_content="cG5n"
+            ),
+            PreparedAttachment(
+                filename="photo.jpeg", mime_type="image/jpeg", encoded_content="anBlZw=="
+            ),
         ),
     )
 
@@ -95,9 +104,15 @@ def test_send_adds_pdf_attachments_without_changing_plain_text(monkeypatch, tmp_
             "disposition": "attachment",
         },
         {
-            "content": "cGRmMg==",
-            "filename": "application.pdf",
-            "type": "application/pdf",
+            "content": "cG5n",
+            "filename": "product.png",
+            "type": "image/png",
+            "disposition": "attachment",
+        },
+        {
+            "content": "anBlZw==",
+            "filename": "photo.jpeg",
+            "type": "image/jpeg",
             "disposition": "attachment",
         },
     ]
@@ -110,5 +125,9 @@ def test_prepare_attachments_encodes_each_file_once(tmp_path: Path) -> None:
     attachments = prepare_attachments((pdf,))
 
     assert attachments == (
-        PreparedAttachment(filename="guide.pdf", encoded_content="JVBERi0xLjcKZXhhbXBsZQ=="),
+        PreparedAttachment(
+            filename="guide.pdf",
+            mime_type="application/pdf",
+            encoded_content="JVBERi0xLjcKZXhhbXBsZQ==",
+        ),
     )

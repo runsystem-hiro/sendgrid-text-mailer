@@ -24,6 +24,7 @@ from sendgrid.helpers.mail import (
     TrackingSettings,
 )
 
+from .config import ALLOWED_ATTACHMENT_TYPES
 from .errors import SendGridError
 from .models import AppConfig, PreparedAttachment, RenderedMessage, SendResult
 from .recipients import normalize_email
@@ -89,7 +90,7 @@ class SendGridGateway:
                 Attachment(
                     FileContent(attachment.encoded_content),
                     FileName(attachment.filename),
-                    FileType("application/pdf"),
+                    FileType(attachment.mime_type),
                     Disposition("attachment"),
                 )
             )
@@ -110,7 +111,7 @@ class SendGridGateway:
 
 
 def prepare_attachments(files: tuple[Path, ...]) -> tuple[PreparedAttachment, ...]:
-    """Read and encode validated PDF files once before delivery begins."""
+    """Read and encode validated ordinary attachments once per campaign run."""
     prepared: list[PreparedAttachment] = []
     for path in files:
         try:
@@ -118,7 +119,11 @@ def prepare_attachments(files: tuple[Path, ...]) -> tuple[PreparedAttachment, ..
         except OSError as exc:
             raise SendGridError(f"Attachment file cannot be read: {path}") from exc
         prepared.append(
-            PreparedAttachment(filename=path.name, encoded_content=encoded_content)
+            PreparedAttachment(
+                filename=path.name,
+                mime_type=ALLOWED_ATTACHMENT_TYPES[path.suffix.lower()][0],
+                encoded_content=encoded_content,
+            )
         )
     return tuple(prepared)
 

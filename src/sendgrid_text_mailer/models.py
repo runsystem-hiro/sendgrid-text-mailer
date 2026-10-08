@@ -33,9 +33,10 @@ class Campaign:
 
 @dataclass(frozen=True, slots=True)
 class PreparedAttachment:
-    """A validated PDF attachment encoded once per campaign run."""
+    """A validated ordinary attachment encoded once per campaign run."""
 
     filename: str
+    mime_type: str
     encoded_content: str
 
 

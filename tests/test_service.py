@@ -67,7 +67,9 @@ def test_send_campaign_passes_prepared_attachments_to_test_and_send(
         max_send_count=10,
         send_interval_seconds=0,
     )
-    attachment = PreparedAttachment(filename="guide.pdf", encoded_content="cGRm")
+    attachment = PreparedAttachment(
+        filename="guide.pdf", mime_type="application/pdf", encoded_content="cGRm"
+    )
     prepared = PreparedCampaign(
         campaign=campaign,
         messages=[RenderedMessage(Recipient("source@example.com"), "Subject", "Body")],

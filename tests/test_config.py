@@ -52,6 +52,16 @@ def write_pdf(path: Path, content: bytes = b"%PDF-1.7\nexample") -> None:
     path.write_bytes(content)
 
 
+def write_png(path: Path, content: bytes = b"\x89PNG\r\n\x1a\nexample") -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(content)
+
+
+def write_jpeg(path: Path, content: bytes = b"\xff\xd8\xff\xe0example") -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(content)
+
+
 def test_load_campaign_accepts_one_or_more_pdf_attachments(tmp_path: Path) -> None:
     write_pdf(tmp_path / "attachments" / "guide.pdf")
     write_pdf(tmp_path / "attachments" / "application.PDF")
@@ -67,11 +77,40 @@ def test_load_campaign_accepts_one_or_more_pdf_attachments(tmp_path: Path) -> No
     )
 
 
+def test_load_campaign_accepts_pdf_png_and_jpeg_attachments(tmp_path: Path) -> None:
+    write_pdf(tmp_path / "attachments" / "guide.pdf")
+    write_png(tmp_path / "attachments" / "product.png")
+    write_jpeg(tmp_path / "attachments" / "photo.JPEG")
+    write_campaign(tmp_path)
+    with (tmp_path / "campaign.toml").open("a", encoding="utf-8") as file:
+        file.write(
+            '\nattachments = ["attachments/guide.pdf", "attachments/product.png", '
+            '"attachments/photo.JPEG"]\n'
+        )
+
+    campaign = load_campaign(tmp_path)
+
+    assert campaign.attachment_files == (
+        (tmp_path / "attachments" / "guide.pdf").resolve(),
+        (tmp_path / "attachments" / "product.png").resolve(),
+        (tmp_path / "attachments" / "photo.JPEG").resolve(),
+    )
+
+
 @pytest.mark.parametrize(
     ("attachments", "files", "error"),
     [
         ('attachments = "attachments/guide.pdf"', {}, "must be an array"),
-        ('attachments = ["attachments/guide.txt"]', {"attachments/guide.txt": b"text"}, "PDF"),
+        (
+            'attachments = ["attachments/guide.txt"]',
+            {"attachments/guide.txt": b"text"},
+            "PDF, PNG, or JPEG",
+        ),
+        (
+            'attachments = ["attachments/archive.zip"]',
+            {"attachments/archive.zip": b"PK"},
+            "PDF, PNG, or JPEG",
+        ),
         ('attachments = ["attachments/missing.pdf"]', {}, "not found"),
         ('attachments = ["attachments/empty.pdf"]', {"attachments/empty.pdf": b""}, "empty"),
         (
@@ -82,7 +121,7 @@ def test_load_campaign_accepts_one_or_more_pdf_attachments(tmp_path: Path) -> No
         (
             'attachments = ["attachments/invalid.pdf"]',
             {"attachments/invalid.pdf": b"not a PDF"},
-            "not a valid PDF",
+            "does not match its expected file type",
         ),
     ],
 )
