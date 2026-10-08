@@ -11,7 +11,8 @@ from dotenv import load_dotenv
 
 from .config import load_app_config
 from .database import DeliveryDatabase
-from .errors import MailerError, ValidationError
+from .errors import MailerError, SendInterrupted, ValidationError
+from .progress import ConsoleProgressReporter
 from .scaffold import create_campaign_scaffold
 from .service import prepare_campaign, prepare_delivery, send_campaign
 
@@ -122,6 +123,9 @@ def command_test(args: argparse.Namespace) -> int:
         config=config,
         mode="test",
         test_address=args.to,
+        progress_callback=ConsoleProgressReporter(
+            send_interval_seconds=prepared.campaign.send_interval_seconds
+        ),
     )
     print(f"Run ID  : {run_id}")
     print(f"Sent    : {sent}")
@@ -151,6 +155,9 @@ def command_send(args: argparse.Namespace) -> int:
         config=config,
         mode="send",
         delivery_plan=plan,
+        progress_callback=ConsoleProgressReporter(
+            send_interval_seconds=prepared.campaign.send_interval_seconds
+        ),
     )
     print(f"Run ID  : {run_id}")
     print(f"Sent    : {sent}")
@@ -168,10 +175,13 @@ def command_history(args: argparse.Namespace) -> int:
     if not rows:
         print("No delivery history found.")
         return 0
-    print("STARTED_AT                MODE  CAMPAIGN                 TOTAL SENT FAIL SKIP RUN_ID")
+    print(
+        "STARTED_AT                MODE  STATUS       CAMPAIGN                 "
+        "TOTAL SENT FAIL SKIP RUN_ID"
+    )
     for row in rows:
         print(
-            f"{row['started_at']:<25} {row['mode']:<5} "
+            f"{row['started_at']:<25} {row['mode']:<5} {row['status']:<12} "
             f"{row['campaign_id'][:24]:<24} {row['total_count']:>5} "
             f"{row['sent_count']:>4} {row['failed_count']:>4} "
             f"{row['skipped_count']:>4} {row['run_id']}"
@@ -192,6 +202,8 @@ def main(argv: list[str] | None = None) -> None:
     }
     try:
         exit_code = handlers[args.command](args)
+    except SendInterrupted:
+        exit_code = 130
     except MailerError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         exit_code = 2
