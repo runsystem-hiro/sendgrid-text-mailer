@@ -25,7 +25,7 @@ SendGrid公式Python SDKを使用し、CSVの宛先へパーソナライズし�
 次の用途には対応しません。
 
 - HTMLメール
-- 本文内画像、インライン画像、HTMLメール
+- 本文内画像、インライン画像
 - ZIPを含む、PDF・PNG・JPEG以外の添付ファイル
 - 開封率・クリック率の測定
 - SendGrid Dynamic Templates
