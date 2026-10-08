@@ -50,10 +50,7 @@ def test_multiline_subject_is_rejected(tmp_path: Path) -> None:
 def test_render_unsubscribe_url(tmp_path: Path) -> None:
     item = campaign(tmp_path, "Subject", "配信停止: {unsubscribe_url}")
     message = render_messages(item, [Recipient(email="user@example.com")])[0]
-    assert (
-        message.body
-        == "配信停止: https://example.com/unsubscribe?group_id=12345"
-    )
+    assert message.body == "配信停止: https://example.com/unsubscribe?group_id=12345"
 
 
 def test_unsubscribe_url_requires_campaign_setting(tmp_path: Path) -> None:

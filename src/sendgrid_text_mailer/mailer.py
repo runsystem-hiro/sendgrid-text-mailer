@@ -3,11 +3,18 @@
 from __future__ import annotations
 
 import json
+from base64 import b64encode
 from collections.abc import Iterable
+from pathlib import Path
 
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import (
+    Attachment,
     ClickTracking,
+    Disposition,
+    FileContent,
+    FileName,
+    FileType,
     From,
     Mail,
     OpenTracking,
@@ -17,8 +24,9 @@ from sendgrid.helpers.mail import (
     TrackingSettings,
 )
 
+from .config import ALLOWED_ATTACHMENT_TYPES
 from .errors import SendGridError
-from .models import AppConfig, RenderedMessage, SendResult
+from .models import AppConfig, PreparedAttachment, RenderedMessage, SendResult
 from .recipients import normalize_email
 
 
@@ -30,11 +38,9 @@ class SendGridGateway:
     def get_unsubscribed_emails(self) -> set[str]:
         """Return all addresses suppressed for the configured ASM group."""
         try:
-            response = (
-                self.client.client.asm.groups
-                ._(self.config.unsubscribe_group_id)
-                .suppressions.get()
-            )
+            response = self.client.client.asm.groups._(
+                self.config.unsubscribe_group_id
+            ).suppressions.get()
         except Exception as exc:
             raise SendGridError(f"Failed to retrieve unsubscribe list: {exc}") from exc
 
@@ -58,7 +64,11 @@ class SendGridGateway:
                 emails.add(normalize_email(item["email"]))
         return emails
 
-    def send(self, message: RenderedMessage) -> SendResult:
+    def send(
+        self,
+        message: RenderedMessage,
+        attachments: tuple[PreparedAttachment, ...] = (),
+    ) -> SendResult:
         mail = Mail(
             from_email=From(self.config.from_email, self.config.from_name),
             to_emails=To(message.recipient.email),
@@ -71,6 +81,17 @@ class SendGridGateway:
         mail.tracking_settings = tracking
         if self.config.reply_to_list:
             mail.reply_to_list = [ReplyTo(address) for address in self.config.reply_to_list]
+        # The SendGrid helper prepends each attachment internally, so reverse the
+        # iteration to preserve the order declared in campaign.toml.
+        for attachment in reversed(attachments):
+            mail.add_attachment(
+                Attachment(
+                    FileContent(attachment.encoded_content),
+                    FileName(attachment.filename),
+                    FileType(attachment.mime_type),
+                    Disposition("attachment"),
+                )
+            )
 
         try:
             response = self.client.send(mail)
@@ -85,6 +106,24 @@ class SendGridGateway:
 
         message_id = _first_header(response.headers, "X-Message-Id")
         return SendResult(status_code=response.status_code, message_id=message_id)
+
+
+def prepare_attachments(files: tuple[Path, ...]) -> tuple[PreparedAttachment, ...]:
+    """Read and encode validated ordinary attachments once per campaign run."""
+    prepared: list[PreparedAttachment] = []
+    for path in files:
+        try:
+            encoded_content = b64encode(path.read_bytes()).decode("ascii")
+        except OSError as exc:
+            raise SendGridError(f"Attachment file cannot be read: {path}") from exc
+        prepared.append(
+            PreparedAttachment(
+                filename=path.name,
+                mime_type=ALLOWED_ATTACHMENT_TYPES[path.suffix.lower()][0],
+                encoded_content=encoded_content,
+            )
+        )
+    return tuple(prepared)
 
 
 def _response_body(body: bytes | str | None) -> str:

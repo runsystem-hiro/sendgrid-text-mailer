@@ -2,7 +2,11 @@ from pathlib import Path
 
 import pytest
 
-from sendgrid_text_mailer.config import load_app_config, load_campaign
+from sendgrid_text_mailer.config import (
+    MAX_ATTACHMENT_FILE_BYTES,
+    load_app_config,
+    load_campaign,
+)
 from sendgrid_text_mailer.errors import ConfigurationError
 
 
@@ -43,6 +47,124 @@ def test_load_campaign_allows_manual_unsubscribe_handling(tmp_path: Path) -> Non
     assert campaign.unsubscribe_url == ""
 
 
+def write_pdf(path: Path, content: bytes = b"%PDF-1.7\nexample") -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(content)
+
+
+def write_png(path: Path, content: bytes = b"\x89PNG\r\n\x1a\nexample") -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(content)
+
+
+def write_jpeg(path: Path, content: bytes = b"\xff\xd8\xff\xe0example") -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(content)
+
+
+def test_load_campaign_accepts_one_or_more_pdf_attachments(tmp_path: Path) -> None:
+    write_pdf(tmp_path / "attachments" / "guide.pdf")
+    write_pdf(tmp_path / "attachments" / "application.PDF")
+    write_campaign(tmp_path)
+    with (tmp_path / "campaign.toml").open("a", encoding="utf-8") as file:
+        file.write('\nattachments = ["attachments/guide.pdf", "attachments/application.PDF"]\n')
+
+    campaign = load_campaign(tmp_path)
+
+    assert campaign.attachment_files == (
+        (tmp_path / "attachments" / "guide.pdf").resolve(),
+        (tmp_path / "attachments" / "application.PDF").resolve(),
+    )
+
+
+def test_load_campaign_accepts_pdf_png_and_jpeg_attachments(tmp_path: Path) -> None:
+    write_pdf(tmp_path / "attachments" / "guide.pdf")
+    write_png(tmp_path / "attachments" / "product.png")
+    write_jpeg(tmp_path / "attachments" / "photo.JPEG")
+    write_campaign(tmp_path)
+    with (tmp_path / "campaign.toml").open("a", encoding="utf-8") as file:
+        file.write(
+            '\nattachments = ["attachments/guide.pdf", "attachments/product.png", '
+            '"attachments/photo.JPEG"]\n'
+        )
+
+    campaign = load_campaign(tmp_path)
+
+    assert campaign.attachment_files == (
+        (tmp_path / "attachments" / "guide.pdf").resolve(),
+        (tmp_path / "attachments" / "product.png").resolve(),
+        (tmp_path / "attachments" / "photo.JPEG").resolve(),
+    )
+
+
+def test_load_campaign_rejects_non_ascii_attachment_filename(tmp_path: Path) -> None:
+    write_pdf(tmp_path / "attachments" / "製品カタログ.pdf")
+    write_campaign(tmp_path)
+    with (tmp_path / "campaign.toml").open("a", encoding="utf-8") as file:
+        file.write('\nattachments = ["attachments/製品カタログ.pdf"]\n')
+
+    with pytest.raises(ConfigurationError) as exc_info:
+        load_campaign(tmp_path)
+
+    assert "製品カタログ.pdf" in str(exc_info.value)
+    assert "ASCII名へ変更してください" in str(exc_info.value)
+    assert "product-catalog.pdf" in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    ("attachments", "files", "error"),
+    [
+        ('attachments = "attachments/guide.pdf"', {}, "must be an array"),
+        (
+            'attachments = ["attachments/guide.txt"]',
+            {"attachments/guide.txt": b"text"},
+            "PDF, PNG, or JPEG",
+        ),
+        (
+            'attachments = ["attachments/archive.zip"]',
+            {"attachments/archive.zip": b"PK"},
+            "PDF, PNG, or JPEG",
+        ),
+        ('attachments = ["attachments/missing.pdf"]', {}, "not found"),
+        ('attachments = ["attachments/empty.pdf"]', {"attachments/empty.pdf": b""}, "empty"),
+        (
+            'attachments = ["attachments/guide.pdf", "attachments/guide.pdf"]',
+            {"attachments/guide.pdf": b"%PDF-1.7"},
+            "more than once",
+        ),
+        (
+            'attachments = ["attachments/invalid.pdf"]',
+            {"attachments/invalid.pdf": b"not a PDF"},
+            "does not match its expected file type",
+        ),
+    ],
+)
+def test_load_campaign_rejects_invalid_attachments(
+    tmp_path: Path,
+    attachments: str,
+    files: dict[str, bytes],
+    error: str,
+) -> None:
+    for relative_path, content in files.items():
+        write_pdf(tmp_path / relative_path, content)
+    write_campaign(tmp_path)
+    with (tmp_path / "campaign.toml").open("a", encoding="utf-8") as file:
+        file.write(f"\n{attachments}\n")
+
+    with pytest.raises(ConfigurationError, match=error):
+        load_campaign(tmp_path)
+
+
+def test_load_campaign_rejects_attachment_larger_than_file_limit(tmp_path: Path) -> None:
+    write_pdf(tmp_path / "attachments" / "large.pdf", b"%PDF-" + b"x" * MAX_ATTACHMENT_FILE_BYTES)
+    write_campaign(tmp_path)
+    with (tmp_path / "campaign.toml").open("a", encoding="utf-8") as file:
+        file.write('\nattachments = ["attachments/large.pdf"]\n')
+
+    with pytest.raises(ConfigurationError, match="per-file limit"):
+        load_campaign(tmp_path)
+
+
 def test_load_app_config_parses_reply_to_list(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv("SENDGRID_API_KEY", "test-key")
     monkeypatch.setenv("SENDGRID_FROM_EMAIL", "sender@example.com")
@@ -50,7 +172,8 @@ def test_load_app_config_parses_reply_to_list(monkeypatch, tmp_path: Path) -> No
     monkeypatch.setenv("SENDGRID_UNSUBSCRIBE_GROUP_ID", "12345")
     monkeypatch.setenv("MAILER_DATABASE_PATH", str(tmp_path / "mailer.sqlite3"))
     monkeypatch.setenv(
-        "SENDGRID_REPLY_TO_LIST", " Kurosawa@example.com , hiro@example.com ",
+        "SENDGRID_REPLY_TO_LIST",
+        " Kurosawa@example.com , hiro@example.com ",
     )
 
     config = load_app_config()
@@ -66,7 +189,8 @@ def test_load_app_config_rejects_duplicate_reply_to_address(monkeypatch, tmp_pat
     monkeypatch.setenv("SENDGRID_UNSUBSCRIBE_GROUP_ID", "12345")
     monkeypatch.setenv("MAILER_DATABASE_PATH", str(tmp_path / "mailer.sqlite3"))
     monkeypatch.setenv(
-        "SENDGRID_REPLY_TO_LIST", "kurosawa@example.com,KUROSAWA@example.com",
+        "SENDGRID_REPLY_TO_LIST",
+        "kurosawa@example.com,KUROSAWA@example.com",
     )
 
     with pytest.raises(ConfigurationError, match="duplicate email address"):

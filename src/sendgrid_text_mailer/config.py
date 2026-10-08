@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import tomllib
 from pathlib import Path
 from urllib.parse import urlparse
@@ -14,6 +15,15 @@ from .models import AppConfig, Campaign
 from .recipients import EMAIL_PATTERN, normalize_email
 
 DEFAULT_DATABASE_PATH = Path("data/sendgrid-text-mailer.sqlite3")
+MAX_ATTACHMENT_FILE_BYTES = 10 * 1024 * 1024
+MAX_ATTACHMENT_TOTAL_BYTES = 15 * 1024 * 1024
+ALLOWED_ATTACHMENT_TYPES: dict[str, tuple[str, bytes]] = {
+    ".pdf": ("application/pdf", b"%PDF-"),
+    ".png": ("image/png", b"\x89PNG\r\n\x1a\n"),
+    ".jpg": ("image/jpeg", b"\xff\xd8\xff"),
+    ".jpeg": ("image/jpeg", b"\xff\xd8\xff"),
+}
+SAFE_ATTACHMENT_FILENAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._-]*$")
 
 
 def _required_env(name: str) -> str:
@@ -60,9 +70,7 @@ def load_app_config(*, require_credentials: bool = True) -> AppConfig | None:
     try:
         group_id = int(group_raw)
     except ValueError as exc:
-        raise ConfigurationError(
-            "SENDGRID_UNSUBSCRIBE_GROUP_ID must be an integer."
-        ) from exc
+        raise ConfigurationError("SENDGRID_UNSUBSCRIBE_GROUP_ID must be an integer.") from exc
     if group_id <= 0:
         raise ConfigurationError("SENDGRID_UNSUBSCRIBE_GROUP_ID must be greater than zero.")
 
@@ -111,6 +119,7 @@ def load_campaign(campaign_dir: Path) -> Campaign:
         raise ConfigurationError("send_interval_seconds must be zero or greater.")
 
     recipients_path = (directory / recipients_raw).resolve()
+    attachment_files = _load_attachment_files(directory, raw.get("attachments"))
     return Campaign(
         campaign_id=campaign_id,
         name=name,
@@ -121,7 +130,61 @@ def load_campaign(campaign_dir: Path) -> Campaign:
         unsubscribe_url=unsubscribe_url,
         max_send_count=max_send_count,
         send_interval_seconds=float(send_interval),
+        attachment_files=attachment_files,
     )
+
+
+def _load_attachment_files(directory: Path, attachments_raw: object | None) -> tuple[Path, ...]:
+    if attachments_raw is None:
+        return ()
+    if not isinstance(attachments_raw, list):
+        raise ConfigurationError("attachments must be an array of PDF, PNG, or JPEG file paths.")
+
+    attachment_files: list[Path] = []
+    seen: set[Path] = set()
+    total_size = 0
+    for index, raw_path in enumerate(attachments_raw, start=1):
+        if not isinstance(raw_path, str) or not raw_path.strip():
+            raise ConfigurationError(f"attachments[{index}] must be a non-empty file path string.")
+        path = (directory / raw_path).resolve()
+        attachment_type = ALLOWED_ATTACHMENT_TYPES.get(path.suffix.lower())
+        if attachment_type is None:
+            raise ConfigurationError(f"Attachment must be a PDF, PNG, or JPEG file: {path}")
+        if not SAFE_ATTACHMENT_FILENAME.fullmatch(path.name):
+            raise ConfigurationError(
+                "添付ファイル名にASCII以外の文字または使用できない記号が含まれています。"
+                "英数字で始め、英数字・半角スペース・.・_・- のみを使うASCII名へ"
+                "変更してください（例: product-catalog.pdf）: "
+                f"{path.name}"
+            )
+        if path in seen:
+            raise ConfigurationError(f"Attachment is specified more than once: {path}")
+        if not path.is_file():
+            raise ConfigurationError(f"Attachment file not found: {path}")
+        try:
+            size = path.stat().st_size
+            with path.open("rb") as file:
+                signature = file.read(len(attachment_type[1]))
+        except OSError as exc:
+            raise ConfigurationError(f"Attachment file cannot be read: {path}") from exc
+        if size == 0:
+            raise ConfigurationError(f"Attachment file is empty: {path}")
+        if size > MAX_ATTACHMENT_FILE_BYTES:
+            raise ConfigurationError(
+                f"Attachment exceeds the {MAX_ATTACHMENT_FILE_BYTES // (1024 * 1024)} MB "
+                f"per-file limit: {path}"
+            )
+        total_size += size
+        if total_size > MAX_ATTACHMENT_TOTAL_BYTES:
+            raise ConfigurationError(
+                f"Attachments exceed the {MAX_ATTACHMENT_TOTAL_BYTES // (1024 * 1024)} MB "
+                "total limit."
+            )
+        if signature != attachment_type[1]:
+            raise ConfigurationError(f"Attachment does not match its expected file type: {path}")
+        seen.add(path)
+        attachment_files.append(path)
+    return tuple(attachment_files)
 
 
 def validate_unsubscribe_url(value: str) -> None:
@@ -129,8 +192,6 @@ def validate_unsubscribe_url(value: str) -> None:
         raise ConfigurationError("unsubscribe_url is required in campaign.toml.")
     parsed = urlparse(value)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-        raise ConfigurationError(
-            "unsubscribe_url must be an absolute HTTP or HTTPS URL."
-        )
+        raise ConfigurationError("unsubscribe_url must be an absolute HTTP or HTTPS URL.")
     if parsed.username or parsed.password:
         raise ConfigurationError("unsubscribe_url must not contain credentials.")

@@ -28,6 +28,16 @@ class Campaign:
     unsubscribe_url: str
     max_send_count: int
     send_interval_seconds: float
+    attachment_files: tuple[Path, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedAttachment:
+    """A validated ordinary attachment encoded once per campaign run."""
+
+    filename: str
+    mime_type: str
+    encoded_content: str
 
 
 @dataclass(frozen=True, slots=True)
