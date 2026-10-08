@@ -97,6 +97,20 @@ def test_load_campaign_accepts_pdf_png_and_jpeg_attachments(tmp_path: Path) -> N
     )
 
 
+def test_load_campaign_rejects_non_ascii_attachment_filename(tmp_path: Path) -> None:
+    write_pdf(tmp_path / "attachments" / "製品カタログ.pdf")
+    write_campaign(tmp_path)
+    with (tmp_path / "campaign.toml").open("a", encoding="utf-8") as file:
+        file.write('\nattachments = ["attachments/製品カタログ.pdf"]\n')
+
+    with pytest.raises(ConfigurationError) as exc_info:
+        load_campaign(tmp_path)
+
+    assert "製品カタログ.pdf" in str(exc_info.value)
+    assert "ASCII名へ変更してください" in str(exc_info.value)
+    assert "product-catalog.pdf" in str(exc_info.value)
+
+
 @pytest.mark.parametrize(
     ("attachments", "files", "error"),
     [

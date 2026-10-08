@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import tomllib
 from pathlib import Path
 from urllib.parse import urlparse
@@ -22,6 +23,7 @@ ALLOWED_ATTACHMENT_TYPES: dict[str, tuple[str, bytes]] = {
     ".jpg": ("image/jpeg", b"\xff\xd8\xff"),
     ".jpeg": ("image/jpeg", b"\xff\xd8\xff"),
 }
+SAFE_ATTACHMENT_FILENAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._-]*$")
 
 
 def _required_env(name: str) -> str:
@@ -148,6 +150,13 @@ def _load_attachment_files(directory: Path, attachments_raw: object | None) -> t
         attachment_type = ALLOWED_ATTACHMENT_TYPES.get(path.suffix.lower())
         if attachment_type is None:
             raise ConfigurationError(f"Attachment must be a PDF, PNG, or JPEG file: {path}")
+        if not SAFE_ATTACHMENT_FILENAME.fullmatch(path.name):
+            raise ConfigurationError(
+                "添付ファイル名にASCII以外の文字または使用できない記号が含まれています。"
+                "英数字で始め、英数字・半角スペース・.・_・- のみを使うASCII名へ"
+                "変更してください（例: product-catalog.pdf）: "
+                f"{path.name}"
+            )
         if path in seen:
             raise ConfigurationError(f"Attachment is specified more than once: {path}")
         if not path.is_file():
