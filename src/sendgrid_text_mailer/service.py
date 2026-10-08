@@ -4,14 +4,16 @@ from __future__ import annotations
 
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
 from .config import load_campaign
 from .database import DeliveryDatabase
-from .errors import ValidationError
+from .errors import SendInterrupted, ValidationError
 from .mailer import SendGridGateway, prepare_attachments
 from .models import AppConfig, Campaign, PreparedAttachment, RenderedMessage
+from .progress import DeliveryProgress
 from .recipients import load_recipients, normalize_email
 from .template import render_messages
 
@@ -97,6 +99,7 @@ def send_campaign(
     mode: str,
     test_address: str | None = None,
     delivery_plan: DeliveryPlan | None = None,
+    progress_callback: Callable[[DeliveryProgress], None] | None = None,
 ) -> tuple[str, int, int, int]:
     if mode == "test":
         database = DeliveryDatabase(config.database_path)
@@ -138,6 +141,7 @@ def send_campaign(
 
     sent = 0
     failed = 0
+    started_at = time.monotonic()
     try:
         for index, message in enumerate(targets):
             try:
@@ -151,6 +155,7 @@ def send_campaign(
                     status="failed",
                     error_message=str(exc),
                 )
+                event = "failure"
             else:
                 sent += 1
                 database.record_delivery(
@@ -161,9 +166,44 @@ def send_campaign(
                     response_status=result.status_code,
                     message_id=result.message_id,
                 )
+                event = "complete" if index == len(targets) - 1 else "progress"
+            if progress_callback:
+                progress_callback(
+                    DeliveryProgress(
+                        total=len(targets),
+                        completed=index + 1,
+                        sent=sent,
+                        failed=failed,
+                        elapsed_seconds=time.monotonic() - started_at,
+                        event=event,
+                    )
+                )
             if index < len(targets) - 1 and prepared.campaign.send_interval_seconds:
                 time.sleep(prepared.campaign.send_interval_seconds)
-    finally:
+    except KeyboardInterrupt as exc:
+        if progress_callback:
+            progress_callback(
+                DeliveryProgress(
+                    total=len(targets),
+                    completed=sent + failed,
+                    sent=sent,
+                    failed=failed,
+                    elapsed_seconds=time.monotonic() - started_at,
+                    event="interrupted",
+                )
+            )
+        database.finish_run(
+            run_id,
+            sent=sent,
+            failed=failed,
+            skipped=len(skipped_items),
+            status="interrupted",
+        )
+        raise SendInterrupted("Sending was interrupted by the operator.") from exc
+    except BaseException:
+        # A forced termination can leave the run as "running". Do not label it complete.
+        raise
+    else:
         database.finish_run(
             run_id,
             sent=sent,

@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS runs (
     mode TEXT NOT NULL,
     started_at TEXT NOT NULL,
     completed_at TEXT,
+    status TEXT NOT NULL DEFAULT 'running',
     total_count INTEGER NOT NULL,
     sent_count INTEGER NOT NULL DEFAULT 0,
     failed_count INTEGER NOT NULL DEFAULT 0,
@@ -55,10 +56,23 @@ class DeliveryDatabase:
         try:
             connection.execute("PRAGMA foreign_keys = ON")
             connection.executescript(SCHEMA)
+            self._migrate_runs_status(connection)
             yield connection
             connection.commit()
         finally:
             connection.close()
+
+    @staticmethod
+    def _migrate_runs_status(connection: sqlite3.Connection) -> None:
+        columns = {str(row["name"]) for row in connection.execute("PRAGMA table_info(runs)")}
+        if "status" not in columns:
+            connection.execute("ALTER TABLE runs ADD COLUMN status TEXT NOT NULL DEFAULT 'running'")
+            connection.execute(
+                """
+                UPDATE runs
+                SET status = CASE WHEN completed_at IS NULL THEN 'running' ELSE 'completed' END
+                """
+            )
 
     def already_sent(self, campaign_id: str) -> set[str]:
         with self.connect() as connection:
@@ -113,15 +127,24 @@ class DeliveryDatabase:
                 ),
             )
 
-    def finish_run(self, run_id: str, *, sent: int, failed: int, skipped: int) -> None:
+    def finish_run(
+        self,
+        run_id: str,
+        *,
+        sent: int,
+        failed: int,
+        skipped: int,
+        status: str = "completed",
+    ) -> None:
         with self.connect() as connection:
             connection.execute(
                 """
                 UPDATE runs
-                SET completed_at = ?, sent_count = ?, failed_count = ?, skipped_count = ?
+                SET completed_at = ?, status = ?, sent_count = ?, failed_count = ?,
+                    skipped_count = ?
                 WHERE run_id = ?
                 """,
-                (now_iso(), sent, failed, skipped, run_id),
+                (now_iso(), status, sent, failed, skipped, run_id),
             )
 
     def recent_runs(self, limit: int = 20) -> list[sqlite3.Row]:
@@ -129,7 +152,7 @@ class DeliveryDatabase:
             return list(
                 connection.execute(
                     """
-                    SELECT run_id, campaign_id, mode, started_at, completed_at,
+                    SELECT run_id, campaign_id, mode, started_at, completed_at, status,
                            total_count, sent_count, failed_count, skipped_count
                     FROM runs
                     ORDER BY started_at DESC

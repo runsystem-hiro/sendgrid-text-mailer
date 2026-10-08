@@ -15,3 +15,7 @@ class ValidationError(MailerError):
 
 class SendGridError(MailerError):
     """Raised when SendGrid communication fails."""
+
+
+class SendInterrupted(MailerError):
+    """Raised when an operator interrupts an in-progress delivery."""
