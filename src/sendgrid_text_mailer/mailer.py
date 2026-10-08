@@ -38,11 +38,9 @@ class SendGridGateway:
     def get_unsubscribed_emails(self) -> set[str]:
         """Return all addresses suppressed for the configured ASM group."""
         try:
-            response = (
-                self.client.client.asm.groups
-                ._(self.config.unsubscribe_group_id)
-                .suppressions.get()
-            )
+            response = self.client.client.asm.groups._(
+                self.config.unsubscribe_group_id
+            ).suppressions.get()
         except Exception as exc:
             raise SendGridError(f"Failed to retrieve unsubscribe list: {exc}") from exc
 

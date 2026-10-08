@@ -68,9 +68,7 @@ def load_app_config(*, require_credentials: bool = True) -> AppConfig | None:
     try:
         group_id = int(group_raw)
     except ValueError as exc:
-        raise ConfigurationError(
-            "SENDGRID_UNSUBSCRIBE_GROUP_ID must be an integer."
-        ) from exc
+        raise ConfigurationError("SENDGRID_UNSUBSCRIBE_GROUP_ID must be an integer.") from exc
     if group_id <= 0:
         raise ConfigurationError("SENDGRID_UNSUBSCRIBE_GROUP_ID must be greater than zero.")
 
@@ -134,30 +132,22 @@ def load_campaign(campaign_dir: Path) -> Campaign:
     )
 
 
-def _load_attachment_files(
-    directory: Path, attachments_raw: object | None
-) -> tuple[Path, ...]:
+def _load_attachment_files(directory: Path, attachments_raw: object | None) -> tuple[Path, ...]:
     if attachments_raw is None:
         return ()
     if not isinstance(attachments_raw, list):
-        raise ConfigurationError(
-            "attachments must be an array of PDF, PNG, or JPEG file paths."
-        )
+        raise ConfigurationError("attachments must be an array of PDF, PNG, or JPEG file paths.")
 
     attachment_files: list[Path] = []
     seen: set[Path] = set()
     total_size = 0
     for index, raw_path in enumerate(attachments_raw, start=1):
         if not isinstance(raw_path, str) or not raw_path.strip():
-            raise ConfigurationError(
-                f"attachments[{index}] must be a non-empty file path string."
-            )
+            raise ConfigurationError(f"attachments[{index}] must be a non-empty file path string.")
         path = (directory / raw_path).resolve()
         attachment_type = ALLOWED_ATTACHMENT_TYPES.get(path.suffix.lower())
         if attachment_type is None:
-            raise ConfigurationError(
-                f"Attachment must be a PDF, PNG, or JPEG file: {path}"
-            )
+            raise ConfigurationError(f"Attachment must be a PDF, PNG, or JPEG file: {path}")
         if path in seen:
             raise ConfigurationError(f"Attachment is specified more than once: {path}")
         if not path.is_file():
@@ -182,9 +172,7 @@ def _load_attachment_files(
                 "total limit."
             )
         if signature != attachment_type[1]:
-            raise ConfigurationError(
-                f"Attachment does not match its expected file type: {path}"
-            )
+            raise ConfigurationError(f"Attachment does not match its expected file type: {path}")
         seen.add(path)
         attachment_files.append(path)
     return tuple(attachment_files)
@@ -195,8 +183,6 @@ def validate_unsubscribe_url(value: str) -> None:
         raise ConfigurationError("unsubscribe_url is required in campaign.toml.")
     parsed = urlparse(value)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-        raise ConfigurationError(
-            "unsubscribe_url must be an absolute HTTP or HTTPS URL."
-        )
+        raise ConfigurationError("unsubscribe_url must be an absolute HTTP or HTTPS URL.")
     if parsed.username or parsed.password:
         raise ConfigurationError("unsubscribe_url must not contain credentials.")

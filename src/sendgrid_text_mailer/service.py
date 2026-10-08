@@ -38,8 +38,7 @@ def prepare_campaign(campaign_dir: Path) -> PreparedCampaign:
     messages = render_messages(campaign, recipients)
     if len(messages) > campaign.max_send_count:
         raise ValidationError(
-            f"Recipient count {len(messages)} exceeds max_send_count "
-            f"({campaign.max_send_count})."
+            f"Recipient count {len(messages)} exceeds max_send_count ({campaign.max_send_count})."
         )
     attachments = prepare_attachments(campaign.attachment_files)
     return PreparedCampaign(

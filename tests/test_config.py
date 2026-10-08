@@ -158,7 +158,8 @@ def test_load_app_config_parses_reply_to_list(monkeypatch, tmp_path: Path) -> No
     monkeypatch.setenv("SENDGRID_UNSUBSCRIBE_GROUP_ID", "12345")
     monkeypatch.setenv("MAILER_DATABASE_PATH", str(tmp_path / "mailer.sqlite3"))
     monkeypatch.setenv(
-        "SENDGRID_REPLY_TO_LIST", " Kurosawa@example.com , hiro@example.com ",
+        "SENDGRID_REPLY_TO_LIST",
+        " Kurosawa@example.com , hiro@example.com ",
     )
 
     config = load_app_config()
@@ -174,7 +175,8 @@ def test_load_app_config_rejects_duplicate_reply_to_address(monkeypatch, tmp_pat
     monkeypatch.setenv("SENDGRID_UNSUBSCRIBE_GROUP_ID", "12345")
     monkeypatch.setenv("MAILER_DATABASE_PATH", str(tmp_path / "mailer.sqlite3"))
     monkeypatch.setenv(
-        "SENDGRID_REPLY_TO_LIST", "kurosawa@example.com,KUROSAWA@example.com",
+        "SENDGRID_REPLY_TO_LIST",
+        "kurosawa@example.com,KUROSAWA@example.com",
     )
 
     with pytest.raises(ConfigurationError, match="duplicate email address"):

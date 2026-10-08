@@ -45,9 +45,7 @@ def test_send_disables_tracking(monkeypatch, tmp_path: Path) -> None:
 
 
 def test_send_sets_all_configured_reply_to_addresses(monkeypatch, tmp_path: Path) -> None:
-    gateway = SendGridGateway(
-        config(tmp_path, ("kurosawa@example.com", "hiro@example.com"))
-    )
+    gateway = SendGridGateway(config(tmp_path, ("kurosawa@example.com", "hiro@example.com")))
     captured = {}
 
     def fake_send(mail):

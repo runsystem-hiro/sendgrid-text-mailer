@@ -23,15 +23,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    campaign_parser = subparsers.add_parser(
-        "campaign", help="Create and manage campaign files."
-    )
-    campaign_subparsers = campaign_parser.add_subparsers(
-        dest="campaign_command", required=True
-    )
-    create_parser = campaign_subparsers.add_parser(
-        "create", help="Create a new campaign scaffold."
-    )
+    campaign_parser = subparsers.add_parser("campaign", help="Create and manage campaign files.")
+    campaign_subparsers = campaign_parser.add_subparsers(dest="campaign_command", required=True)
+    create_parser = campaign_subparsers.add_parser("create", help="Create a new campaign scaffold.")
     create_parser.add_argument("--campaign-id", required=True)
     create_parser.add_argument("--name", required=True)
     create_parser.add_argument("--recipients-file", type=Path, required=True)
@@ -169,9 +163,7 @@ def command_history(args: argparse.Namespace) -> int:
     if args.limit <= 0:
         raise ValidationError("--limit must be greater than zero.")
     load_dotenv()
-    database_path = Path(
-        os.getenv("MAILER_DATABASE_PATH", "data/sendgrid-text-mailer.sqlite3")
-    )
+    database_path = Path(os.getenv("MAILER_DATABASE_PATH", "data/sendgrid-text-mailer.sqlite3"))
     rows = DeliveryDatabase(database_path).recent_runs(args.limit)
     if not rows:
         print("No delivery history found.")
