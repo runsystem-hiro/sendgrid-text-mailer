@@ -150,9 +150,7 @@ class DeliveryDatabase:
                 (now_iso(), status, sent, failed, skipped, run_id),
             )
 
-    def recent_runs(
-        self, limit: int = 20, *, campaign_id: str | None = None
-    ) -> list[sqlite3.Row]:
+    def recent_runs(self, limit: int = 20, *, campaign_id: str | None = None) -> list[sqlite3.Row]:
         with self.connect() as connection:
             query = """
                 SELECT run_id, campaign_id, mode, started_at, completed_at, status,

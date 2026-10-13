@@ -15,6 +15,10 @@ def write_campaign(tmp_path: Path, unsubscribe_url: str | None = None) -> None:
         'campaign_id = "test"',
         'name = "Test"',
         'recipients_file = "recipients.csv"',
+        'from_email = "sender@example.com"',
+        'from_name = "Example Sender"',
+        'reply_to_list = ["reply@example.com"]',
+        "unsubscribe_group_id = 12345",
     ]
     if unsubscribe_url:
         lines.append(f'unsubscribe_url = "{unsubscribe_url}"')
@@ -45,6 +49,33 @@ def test_load_campaign_allows_manual_unsubscribe_handling(tmp_path: Path) -> Non
     campaign = load_campaign(tmp_path)
 
     assert campaign.unsubscribe_url == ""
+
+
+def test_load_campaign_requires_campaign_sender_settings(tmp_path: Path) -> None:
+    (tmp_path / "campaign.toml").write_text(
+        "\n".join(
+            [
+                'campaign_id = "test"',
+                'name = "Test"',
+                'recipients_file = "recipients.csv"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigurationError, match="from_email is required"):
+        load_campaign(tmp_path)
+
+
+def test_load_campaign_reads_campaign_sender_settings(tmp_path: Path) -> None:
+    write_campaign(tmp_path)
+
+    campaign = load_campaign(tmp_path)
+
+    assert campaign.from_email == "sender@example.com"
+    assert campaign.from_name == "Example Sender"
+    assert campaign.reply_to_list == ("reply@example.com",)
+    assert campaign.unsubscribe_group_id == 12345
 
 
 def write_pdf(path: Path, content: bytes = b"%PDF-1.7\nexample") -> None:
@@ -167,31 +198,25 @@ def test_load_campaign_rejects_attachment_larger_than_file_limit(tmp_path: Path)
 
 def test_load_app_config_parses_reply_to_list(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv("SENDGRID_API_KEY", "test-key")
-    monkeypatch.setenv("SENDGRID_FROM_EMAIL", "sender@example.com")
-    monkeypatch.setenv("SENDGRID_FROM_NAME", "Example Sender")
-    monkeypatch.setenv("SENDGRID_UNSUBSCRIBE_GROUP_ID", "12345")
     monkeypatch.setenv("MAILER_DATABASE_PATH", str(tmp_path / "mailer.sqlite3"))
-    monkeypatch.setenv(
-        "SENDGRID_REPLY_TO_LIST",
-        " Kurosawa@example.com , hiro@example.com ",
-    )
 
     config = load_app_config()
 
     assert config is not None
-    assert config.reply_to_list == ("kurosawa@example.com", "hiro@example.com")
+    assert config.api_key == "test-key"
+    assert config.database_path == tmp_path / "mailer.sqlite3"
 
 
-def test_load_app_config_rejects_duplicate_reply_to_address(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("SENDGRID_API_KEY", "test-key")
-    monkeypatch.setenv("SENDGRID_FROM_EMAIL", "sender@example.com")
-    monkeypatch.setenv("SENDGRID_FROM_NAME", "Example Sender")
-    monkeypatch.setenv("SENDGRID_UNSUBSCRIBE_GROUP_ID", "12345")
-    monkeypatch.setenv("MAILER_DATABASE_PATH", str(tmp_path / "mailer.sqlite3"))
-    monkeypatch.setenv(
-        "SENDGRID_REPLY_TO_LIST",
-        "kurosawa@example.com,KUROSAWA@example.com",
+def test_load_campaign_rejects_duplicate_reply_to_address(tmp_path: Path) -> None:
+    write_campaign(tmp_path)
+    config_path = tmp_path / "campaign.toml"
+    config_path.write_text(
+        config_path.read_text(encoding="utf-8").replace(
+            'reply_to_list = ["reply@example.com"]',
+            'reply_to_list = ["reply@example.com", "REPLY@example.com"]',
+        ),
+        encoding="utf-8",
     )
 
     with pytest.raises(ConfigurationError, match="duplicate email address"):
-        load_app_config()
+        load_campaign(tmp_path)

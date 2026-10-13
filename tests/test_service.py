@@ -95,6 +95,9 @@ def test_send_campaign_passes_prepared_attachments_to_test_and_send(
         def get_unsubscribed_emails(self) -> set[str]:
             return set()
 
+        def verify_sender(self) -> None:
+            return None
+
         def send(
             self,
             message: RenderedMessage,
@@ -158,6 +161,9 @@ def test_send_campaign_reports_progress_and_failures(monkeypatch, tmp_path: Path
         def get_unsubscribed_emails(self) -> set[str]:
             return set()
 
+        def verify_sender(self) -> None:
+            return None
+
         def send(self, _message: RenderedMessage, _attachments: tuple[PreparedAttachment, ...]):
             nonlocal calls
             calls += 1
@@ -220,6 +226,9 @@ def test_send_campaign_records_keyboard_interrupt(monkeypatch, tmp_path: Path) -
 
         def get_unsubscribed_emails(self) -> set[str]:
             return set()
+
+        def verify_sender(self) -> None:
+            return None
 
         def send(self, _message: RenderedMessage, _attachments: tuple[PreparedAttachment, ...]):
             nonlocal calls

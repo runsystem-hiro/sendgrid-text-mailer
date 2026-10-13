@@ -14,6 +14,10 @@ def test_create_campaign_defaults_to_reply_based_unsubscribe(tmp_path: Path) -> 
         campaign_id="reply-unsubscribe",
         name="Reply Unsubscribe",
         recipients_file=create_recipients_file(tmp_path),
+        from_email="sender@example.com",
+        from_name="Example Sender",
+        reply_to_list=("reply@example.com",),
+        unsubscribe_group_id=12345,
         output_dir=tmp_path / "campaign",
     )
 
@@ -28,6 +32,10 @@ def test_create_campaign_includes_external_unsubscribe_url_when_requested(tmp_pa
         campaign_id="external-unsubscribe",
         name="External Unsubscribe",
         recipients_file=create_recipients_file(tmp_path),
+        from_email="sender@example.com",
+        from_name="Example Sender",
+        reply_to_list=("reply@example.com",),
+        unsubscribe_group_id=12345,
         unsubscribe_url="https://example.com/unsubscribe",
         output_dir=tmp_path / "campaign",
     )

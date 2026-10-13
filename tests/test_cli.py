@@ -18,6 +18,14 @@ def test_campaign_create_parser() -> None:
             "Sample",
             "--recipients-file",
             "data/recipients.csv",
+            "--from-email",
+            "sender@example.com",
+            "--from-name",
+            "Example Sender",
+            "--reply-to",
+            "reply@example.com",
+            "--unsubscribe-group-id",
+            "12345",
         ]
     )
 
@@ -25,6 +33,8 @@ def test_campaign_create_parser() -> None:
     assert args.campaign_command == "create"
     assert args.campaign_id == "sample-1"
     assert args.unsubscribe_url is None
+    assert args.from_email == "sender@example.com"
+    assert args.reply_to == ["reply@example.com"]
 
 
 def test_history_parser_accepts_campaign_id() -> None:

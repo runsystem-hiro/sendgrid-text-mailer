@@ -13,6 +13,7 @@ SendGrid公式Python SDKを使用し、CSVの宛先へパーソナライズし�
 - PDF、PNG、JPEGファイルの通常添付に対応
 - 開封・クリックトラッキングをメール単位で無効化
 - SendGridの配信停止グループを送信前に確認し、取得失敗時は送信を中止
+- 指定した送信元がSendGridで検証済みであることを送信前に確認
 - SendGrid ASMをメールに設定せず、任意の外部配信停止フォームURLを本文へ掲載
 - `campaign_id + email` による重複送信防止
 - `validate`、`preview`、`test`、`send` を分離
@@ -52,16 +53,11 @@ Copy-Item .env.example .env
 
 ```dotenv
 SENDGRID_API_KEY=your_sendgrid_api_key
-SENDGRID_FROM_EMAIL=sender@example.com
-SENDGRID_FROM_NAME=Example Sender
-SENDGRID_REPLY_TO_LIST=first-reply@example.com,second-reply@example.com
-SENDGRID_UNSUBSCRIBE_GROUP_ID=12345
 MAILER_DATABASE_PATH=data/sendgrid-text-mailer.sqlite3
 ```
 
-`SENDGRID_REPLY_TO_LIST` は、受信者が通常の「返信」をした際の宛先です。複数指定する場合は
-カンマ区切りで指定します。設定すると、すべてのアドレスへ返信が届きます。未設定の場合は、
-返信先は `SENDGRID_FROM_EMAIL` になります。本番送信前の確認表示に Reply-To の設定値を表示します。
+送信元・返信先・配信停止グループは、誤ったキャンペーン設定で送信しないよう、`.env` ではなく
+各 `campaign.toml` に必須で指定します。
 
 `.env`、実在する宛先CSV、実運用キャンペーン、SQLiteデータベースは
 Gitへコミットしないでください。
@@ -75,6 +71,10 @@ uv run sendgrid-text-mailer campaign create `
   --campaign-id pc-special-sale-2026-08 `
   --name "PC special sale August 2026" `
   --recipients-file .\data\recipients.csv `
+  --from-email sender@example.com `
+  --from-name "Example Sender" `
+  --reply-to reply@example.com `
+  --unsubscribe-group-id 12345 `
   --unsubscribe-url "https://example.com/unsubscribe?group_id=12345" `
   --max-send-count 300 `
   --send-interval-seconds 1.0
@@ -99,6 +99,10 @@ uv run sendgrid-text-mailer campaign create `
   --campaign-id sample-1 `
   --name "Sample campaign" `
   --recipients-file .\data\recipients.csv `
+  --from-email sender@example.com `
+  --from-name "Example Sender" `
+  --reply-to reply@example.com `
+  --unsubscribe-group-id 12345 `
   --unsubscribe-url "https://example.com/unsubscribe" `
   --output .\campaigns\sample-1
 ```
@@ -109,6 +113,10 @@ uv run sendgrid-text-mailer campaign create `
 campaign_id = "pc-special-sale-2026-08"
 name = "PC special sale August 2026"
 recipients_file = "../../data/recipients.csv"
+from_email = "sender@example.com"
+from_name = "Example Sender"
+reply_to_list = ["reply@example.com"]
+unsubscribe_group_id = 12345
 max_send_count = 300
 send_interval_seconds = 1.0
 unsubscribe_url = "https://example.com/unsubscribe?group_id=12345"
@@ -124,8 +132,14 @@ attachments = [
 別の案内では新しいIDを使用してください。`test --confirm TEST` は、この値を変更せず、
 DB内では `test-<campaign_id>` としてテスト履歴を分離します。
 
+`from_email`、`from_name`、`reply_to_list`、`unsubscribe_group_id` は必須です。`reply_to_list = []`
+とすると Reply-To を指定せず、受信者の通常返信は From アドレスへ届きます。これら4項目の
+`.env` によるフォールバックは行いません。`test` と `send` は、指定した `from_email` が
+SendGrid の Sender Verification で検証済みであることをAPIで確認できなければ送信を中止します。
+
 `unsubscribe_url` には、受信者が配信停止を申請できる外部フォームの完成済み絶対 URL を指定します。
 本文に `{unsubscribe_url}` を記載すると、その URL に置き換わります。SendGrid ASM は送信メールに設定しません。
+外部フォームを使わない場合は `unsubscribe_url` を省略し、本文で返信による配信停止方法を案内できます。
 
 ### 添付ファイル
 
@@ -138,7 +152,7 @@ DB内では `test-<campaign_id>` としてテスト履歴を分離します。
 - 添付内容はログへ出力しません
 - 画像は通常添付のみです。本文内表示・インライン画像には対応しません
 
-実運用の添付ファイルはGitへコミットしないでください。`campaigns/*/attachments/` は既存のローカルキャンペーン除外ルールにより追跡対象外です。`preview`、`test`、`send` では添付予定のファイル名とサイズを表示します。テスト送信にも本番と同じ添付ファイルを付けます。
+実運用の添付ファイルはGitへコミットしないでください。`campaigns/*/attachments/` は既存のローカルキャンペーン除外ルールにより追跡対象外です。`preview` と `send` では添付予定のファイル名とサイズを表示します。テスト送信にも本番と同じ添付ファイルを付けます。
 
 ## 宛先CSV
 
@@ -153,6 +167,17 @@ contact@example.net,,,テスト商事株式会社
 - メールアドレスの前後空白を除去し、小文字で比較
 - 重複、不正形式、空欄が1件でもあれば送信前に中止
 - その他の列はテンプレート変数として利用可能
+
+CSVは `data/` に置くほか、キャンペーンディレクトリ内へ配置できます。`recipients_file` は
+`campaign.toml` からの相対パスで指定します。
+
+```toml
+# data/ に置く場合
+recipients_file = "../../data/recipients.csv"
+
+# campaign.toml と同じディレクトリに置く場合
+recipients_file = "recipients.csv"
+```
 
 ### 日本語宛名
 
@@ -213,8 +238,7 @@ uv run sendgrid-text-mailer history `
 
 ```
 
-本番送信前には、送信元、配信停止グループID、配信停止リスト件数、
-送信可能件数、除外件数を表示します。
+`test` と `send` は、メール送信前に指定した送信元の Sender Verification と配信停止リストを確認します。どちらかを確認できない場合は、メールを1件も送信せずに停止します。テスト・本番送信前には送信元、返信先、配信停止グループIDを表示します。本番送信前には加えて、配信停止リスト件数、送信可能件数、除外件数を表示します。
 
 送信中は、対話型端末では1件ごとに同じ行を更新し、10件ごとに確定行を残します。失敗時は直ちに件数を表示しますが、宛先メールアドレスや本文は表示しません。出力をファイルへリダイレクトした場合は、10件ごとの確定行、失敗時、および完了時のみ出力します。推定残り時間は、設定した送信間隔と実測したAPI応答時間から算出します。
 
@@ -265,9 +289,8 @@ campaign_id,recipient_email,message_id
 2026-10Special-Sale,customer-three@example.com,example-message-id-003
 ```
 
-`MAILER_DATABASE_PATH` で既定以外のDBを使用している場合は、スクリプト内の
-`database_uri` をそのDBのパスへ変更してください。出力CSVには個人情報を含むため、
-Gitへコミットしないでください。
+`MAILER_DATABASE_PATH` で既定以外のDBを使用している場合も、同じCLIコマンドでそのDBを
+参照します。出力CSVには個人情報を含むため、Gitへコミットしないでください。
 
 ## 配信停止の考え方
 

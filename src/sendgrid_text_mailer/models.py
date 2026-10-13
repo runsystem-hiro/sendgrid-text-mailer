@@ -18,6 +18,14 @@ class AppConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class RuntimeConfig:
+    """Settings shared by all campaigns on this machine."""
+
+    api_key: str
+    database_path: Path
+
+
+@dataclass(frozen=True, slots=True)
 class Campaign:
     campaign_id: str
     name: str
@@ -29,6 +37,10 @@ class Campaign:
     max_send_count: int
     send_interval_seconds: float
     attachment_files: tuple[Path, ...] = ()
+    from_email: str = ""
+    from_name: str = ""
+    reply_to_list: tuple[str, ...] = ()
+    unsubscribe_group_id: int = 0
 
 
 @dataclass(frozen=True, slots=True)

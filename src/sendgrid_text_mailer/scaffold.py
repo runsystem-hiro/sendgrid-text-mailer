@@ -7,8 +7,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from .config import validate_unsubscribe_url
-from .errors import ValidationError
+from .config import validate_sender_settings, validate_unsubscribe_url
+from .errors import ConfigurationError, ValidationError
 
 _CAMPAIGN_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 
@@ -26,6 +26,10 @@ def create_campaign_scaffold(
     campaign_id: str,
     name: str,
     recipients_file: Path,
+    from_email: str,
+    from_name: str,
+    reply_to_list: tuple[str, ...],
+    unsubscribe_group_id: int,
     unsubscribe_url: str | None = None,
     output_dir: Path | None = None,
     max_send_count: int = 500,
@@ -44,6 +48,15 @@ def create_campaign_scaffold(
         raise ValidationError("max_send_count must be at least 1.")
     if send_interval_seconds < 0:
         raise ValidationError("send_interval_seconds must not be negative.")
+    try:
+        from_email, from_name, reply_to_list, unsubscribe_group_id = validate_sender_settings(
+            from_email=from_email,
+            from_name=from_name,
+            reply_to_list=reply_to_list,
+            unsubscribe_group_id=unsubscribe_group_id,
+        )
+    except ConfigurationError as exc:
+        raise ValidationError(str(exc)) from exc
 
     if unsubscribe_url:
         validate_unsubscribe_url(unsubscribe_url)
@@ -75,6 +88,12 @@ def create_campaign_scaffold(
         f'campaign_id = "{campaign_id}"',
         f'name = "{_escape_toml(name)}"',
         f'recipients_file = "{relative_recipients.as_posix()}"',
+        f'from_email = "{_escape_toml(from_email.strip())}"',
+        f'from_name = "{_escape_toml(from_name.strip())}"',
+        "reply_to_list = ["
+        + ", ".join(f'"{_escape_toml(value)}"' for value in reply_to_list)
+        + "]",
+        f"unsubscribe_group_id = {unsubscribe_group_id}",
     ]
     if unsubscribe_url:
         config_lines.append(f'unsubscribe_url = "{_escape_toml(unsubscribe_url)}"')
