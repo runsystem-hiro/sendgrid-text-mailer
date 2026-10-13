@@ -1,6 +1,9 @@
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
+from sendgrid_text_mailer.errors import SendGridError
 from sendgrid_text_mailer.mailer import SendGridGateway, prepare_attachments
 from sendgrid_text_mailer.models import AppConfig, PreparedAttachment, Recipient, RenderedMessage
 
@@ -65,6 +68,46 @@ def test_send_sets_all_configured_reply_to_addresses(monkeypatch, tmp_path: Path
         {"email": "kurosawa@example.com"},
         {"email": "hiro@example.com"},
     ]
+
+
+def test_verify_sender_accepts_verified_matching_from_address(monkeypatch, tmp_path: Path) -> None:
+    gateway = SendGridGateway(config(tmp_path))
+
+    def fake_get(*, query_params):
+        assert query_params == {"limit": 1000}
+        return SimpleNamespace(
+            status_code=200,
+            body=b'{"results": [{"id": 1, "from_email": "SENDER@example.com", "verified": true}]}',
+        )
+
+    monkeypatch.setattr(
+        gateway.client,
+        "client",
+        SimpleNamespace(verified_senders=SimpleNamespace(get=fake_get)),
+    )
+
+    gateway.verify_sender()
+
+
+def test_verify_sender_rejects_unverified_matching_from_address(
+    monkeypatch, tmp_path: Path
+) -> None:
+    gateway = SendGridGateway(config(tmp_path))
+
+    def fake_get(*, query_params):
+        return SimpleNamespace(
+            status_code=200,
+            body=b'{"results": [{"id": 1, "from_email": "sender@example.com", "verified": false}]}',
+        )
+
+    monkeypatch.setattr(
+        gateway.client,
+        "client",
+        SimpleNamespace(verified_senders=SimpleNamespace(get=fake_get)),
+    )
+
+    with pytest.raises(SendGridError, match="not a verified SendGrid sender"):
+        gateway.verify_sender()
 
 
 def test_send_adds_allowed_attachments_without_changing_plain_text(

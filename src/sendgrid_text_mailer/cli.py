@@ -11,9 +11,10 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from .config import load_app_config
+from .config import delivery_config, load_app_config
 from .database import DeliveryDatabase
 from .errors import MailerError, SendInterrupted, ValidationError
+from .models import AppConfig
 from .progress import ConsoleProgressReporter
 from .scaffold import create_campaign_scaffold
 from .service import prepare_campaign, prepare_delivery, send_campaign
@@ -35,6 +36,10 @@ def build_parser() -> argparse.ArgumentParser:
     create_parser.add_argument("--name", required=True)
     create_parser.add_argument("--recipients-file", type=Path, required=True)
     create_parser.add_argument("--unsubscribe-url")
+    create_parser.add_argument("--from-email", required=True)
+    create_parser.add_argument("--from-name", required=True)
+    create_parser.add_argument("--reply-to", action="append", default=[])
+    create_parser.add_argument("--unsubscribe-group-id", type=int, required=True)
     create_parser.add_argument("--output", type=Path)
     create_parser.add_argument("--max-send-count", type=int, default=500)
     create_parser.add_argument("--send-interval-seconds", type=float, default=1.0)
@@ -96,6 +101,10 @@ def command_campaign(args: argparse.Namespace) -> int:
         name=args.name,
         recipients_file=args.recipients_file,
         unsubscribe_url=args.unsubscribe_url,
+        from_email=args.from_email,
+        from_name=args.from_name,
+        reply_to_list=tuple(args.reply_to),
+        unsubscribe_group_id=args.unsubscribe_group_id,
         output_dir=args.output,
         max_send_count=args.max_send_count,
         send_interval_seconds=args.send_interval_seconds,
@@ -132,8 +141,10 @@ def command_preview(args: argparse.Namespace) -> int:
 
 def command_test(args: argparse.Namespace) -> int:
     prepared = prepare_campaign(args.campaign)
-    config = load_app_config()
-    assert config is not None
+    runtime = load_app_config()
+    assert runtime is not None
+    config = delivery_config(runtime, prepared.campaign)
+    _print_delivery_settings(config)
     run_id, sent, failed, skipped = send_campaign(
         prepared,
         config=config,
@@ -152,16 +163,13 @@ def command_test(args: argparse.Namespace) -> int:
 
 def command_send(args: argparse.Namespace) -> int:
     prepared = prepare_campaign(args.campaign)
-    config = load_app_config()
-    assert config is not None
-    plan = prepare_delivery(prepared, config=config)
+    runtime = load_app_config()
+    assert runtime is not None
+    config = delivery_config(runtime, prepared.campaign)
     _print_summary(prepared)
-    print(f"From        : {config.from_name} <{config.from_email}>")
-    if config.reply_to_list:
-        print(f"Reply-To    : {', '.join(config.reply_to_list)}")
-    else:
-        print("Reply-To    : not set (replies go to the From address)")
-    print(f"Group ID    : {config.unsubscribe_group_id}")
+    _print_delivery_settings(config)
+    plan = prepare_delivery(prepared, config=config)
+    print("Sender      : verified (fail closed)")
     print(f"Suppressed  : {plan.suppression_count}")
     print(f"Eligible    : {len(plan.targets)}")
     print(f"Skipped     : {len(plan.skipped_items)}")
@@ -180,6 +188,15 @@ def command_send(args: argparse.Namespace) -> int:
     print(f"Failed  : {failed}")
     print(f"Skipped : {skipped}")
     return 1 if failed else 0
+
+
+def _print_delivery_settings(config: AppConfig) -> None:
+    print(f"From        : {config.from_name} <{config.from_email}>")
+    if config.reply_to_list:
+        print(f"Reply-To    : {', '.join(config.reply_to_list)}")
+    else:
+        print("Reply-To    : not set (replies go to the From address)")
+    print(f"Group ID    : {config.unsubscribe_group_id}")
 
 
 def _history_database_path() -> Path:
@@ -227,9 +244,7 @@ def command_history(args: argparse.Namespace) -> int:
     if args.limit <= 0:
         raise ValidationError("--limit must be greater than zero.")
     database_path = _history_database_path()
-    rows = DeliveryDatabase(database_path).recent_runs(
-        args.limit, campaign_id=args.campaign_id
-    )
+    rows = DeliveryDatabase(database_path).recent_runs(args.limit, campaign_id=args.campaign_id)
     if not rows:
         print("No delivery history found.")
         return 0

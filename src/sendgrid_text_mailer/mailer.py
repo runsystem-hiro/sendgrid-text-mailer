@@ -64,6 +64,52 @@ class SendGridGateway:
                 emails.add(normalize_email(item["email"]))
         return emails
 
+    def verify_sender(self) -> None:
+        """Fail closed unless the campaign's From address is a verified sender."""
+        last_seen_id: int | None = None
+        while True:
+            query_params: dict[str, int] = {"limit": 1000}
+            if last_seen_id is not None:
+                query_params["lastSeenID"] = last_seen_id
+            try:
+                response = self.client.client.verified_senders.get(query_params=query_params)
+            except Exception as exc:
+                raise SendGridError(f"Failed to verify sender identity: {exc}") from exc
+            if response.status_code != 200:
+                raise SendGridError(
+                    "Failed to verify sender identity: "
+                    f"HTTP {response.status_code}: {_response_body(response.body)}"
+                )
+            try:
+                payload = json.loads(response.body)
+            except (TypeError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise SendGridError(
+                    "SendGrid returned an invalid sender verification response."
+                ) from exc
+            results = payload.get("results") if isinstance(payload, dict) else None
+            if not isinstance(results, list):
+                raise SendGridError("SendGrid returned an unexpected sender verification response.")
+            for item in results:
+                if not isinstance(item, dict):
+                    continue
+                from_email = item.get("from_email")
+                if (
+                    isinstance(from_email, str)
+                    and normalize_email(from_email) == self.config.from_email
+                    and item.get("verified") is True
+                ):
+                    return
+            ids = [item.get("id") for item in results if isinstance(item, dict)]
+            numeric_ids = [
+                item for item in ids if isinstance(item, int) and not isinstance(item, bool)
+            ]
+            if len(results) < 1000 or not numeric_ids or max(numeric_ids) == last_seen_id:
+                break
+            last_seen_id = max(numeric_ids)
+        raise SendGridError(
+            f"Configured from_email is not a verified SendGrid sender: {self.config.from_email}"
+        )
+
     def send(
         self,
         message: RenderedMessage,

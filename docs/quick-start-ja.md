@@ -6,20 +6,17 @@
 
 ---
 
-## 0. 返信先を設定する
+## 0. 共通設定を確認する
 
-`.env` に、返信を受け取る担当者の業務用メールアドレスをカンマ区切りで設定します。
+`.env` には、全キャンペーンで共通の API キーと配信履歴DBだけを設定します。
 
 ```dotenv
-SENDGRID_REPLY_TO_LIST=first-reply@example.com,second-reply@example.com
-SENDGRID_UNSUBSCRIBE_GROUP_ID=<配信停止グループID>
+SENDGRID_API_KEY=<SendGrid APIキー>
+MAILER_DATABASE_PATH=data/sendgrid-text-mailer.sqlite3
 ```
 
-受信者が通常の「返信」をすると、指定した全アドレスへ届きます。アドレスを未設定にした場合、
-返信先は送信元メールアドレスです。本番送信前に表示される `Reply-To` が想定どおりであることを
-必ず確認してください。
-
-`SENDGRID_UNSUBSCRIBE_GROUP_ID` には、送信対象に対応する配信停止グループの ID を設定します。
+送信元、返信先、配信停止グループは、各キャンペーンの `campaign.toml` に指定します。`.env` への
+フォールバックは行いません。
 
 ---
 
@@ -37,7 +34,8 @@ pwd
 
 ## 2. 宛先CSVを用意する
 
-宛先CSVを `data` フォルダに保存します。
+宛先CSVを `data` フォルダ、またはキャンペーンディレクトリに保存します。`campaign.toml` の
+`recipients_file` は、そのキャンペーンディレクトリからの相対パスです。
 
 例：
 
@@ -63,6 +61,9 @@ contact@example.net,,,見本株式会社
 - 姓名には「様」を付けない
 - UTF-8形式で保存する
 
+キャンペーンディレクトリ内に配置する場合は、後述する `campaign.toml` で
+`recipients_file = "recipients.csv"` のように指定します。
+
 ---
 
 ## 3. キャンペーンを作成する
@@ -74,11 +75,18 @@ uv run sendgrid-text-mailer campaign create `
   --campaign-id pc-sale-2026-08 `
   --name "PC特別販売 2026年8月" `
   --recipients-file .\data\recipients-pc-sale-2026-08.csv `
+  --from-email sender@example.com `
+  --from-name "送信者名" `
+  --reply-to reply@example.com `
+  --unsubscribe-group-id 12345 `
   --unsubscribe-url "https://example.com/unsubscribe"
 ```
 
 実運用では、指定された配信停止フォーム URL を使用してください。フォーム申請者は
-`SENDGRID_UNSUBSCRIBE_GROUP_ID` の配信停止グループへ登録します。
+このキャンペーンの `unsubscribe_group_id` の配信停止グループへ登録します。
+
+`--reply-to` は繰り返し指定できます。Reply-Toを設定しない場合は `--reply-to` を省略します。
+この場合、通常の返信先は From アドレスです。
 
 作成される構成：
 
@@ -91,6 +99,18 @@ campaigns/
 ```
 
 別の案内を送る場合は、新しいキャンペーンIDを使用します。
+
+作成された `campaign.toml` には、キャンペーンごとの送信者設定が入ります。
+
+```toml
+from_email = "sender@example.com"
+from_name = "送信者名"
+reply_to_list = ["reply@example.com"]
+unsubscribe_group_id = 12345
+```
+
+この4項目は必須です。.env の値へのフォールバックはありません。送信元アドレスは SendGrid で
+検証済みにしてください。
 
 ---
 
@@ -133,7 +153,8 @@ campaigns/pc-sale-2026-08/body.txt
 {unsubscribe_url}
 ```
 
-次の変数は削除しないでください。
+`{recipient_block}` は通常使用する変数です。`{unsubscribe_url}` は `campaign.toml` に
+`unsubscribe_url` を指定した場合だけ使用します。
 
 ```text
 {recipient_block}
@@ -187,7 +208,7 @@ uv run sendgrid-text-mailer test `
   --confirm TEST
 ```
 
-受信したメールを確認します。
+Sender Verification と配信停止リストを確認できた場合だけ送信されます。受信したメールを確認します。
 
 修正が必要な場合は、`subject.txt` または `body.txt` を編集し、検証・プレビュー・テスト送信を再実行します。
 
@@ -204,12 +225,13 @@ uv run sendgrid-text-mailer send `
 送信前に表示される次の内容を確認します。
 
 - 送信元
+- Reply-To
 - 配信停止グループID
 - 配信停止済み件数
 - 送信可能件数
 - 除外件数
 
-配信停止リストを取得できない場合は、安全のため送信されません。
+送信元の Sender Verification または配信停止リストを取得できない場合は、安全のため送信されません。
 
 ---
 
@@ -235,6 +257,10 @@ uv run sendgrid-text-mailer campaign create `
   --campaign-id <キャンペーンID> `
   --name "<キャンペーン名>" `
   --recipients-file .\data\<宛先CSV> `
+  --from-email <送信元メールアドレス> `
+  --from-name "<送信者名>" `
+  --reply-to <返信先メールアドレス> `
+  --unsubscribe-group-id <配信停止グループID> `
   --unsubscribe-url "<配信停止フォームURL>"
 
 # 3. subject.txt と body.txt を編集

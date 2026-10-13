@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 from dotenv import load_dotenv
 
 from .errors import ConfigurationError
-from .models import AppConfig, Campaign
+from .models import AppConfig, Campaign, RuntimeConfig
 from .recipients import EMAIL_PATTERN, normalize_email
 
 DEFAULT_DATABASE_PATH = Path("data/sendgrid-text-mailer.sqlite3")
@@ -33,55 +33,37 @@ def _required_env(name: str) -> str:
     return value
 
 
-def _load_reply_to_list() -> tuple[str, ...]:
-    """Load and validate optional comma-separated reply addresses."""
-    raw = os.getenv("SENDGRID_REPLY_TO_LIST", "")
-    if not raw.strip():
-        return ()
-
+def _load_reply_to_list(raw: object, *, field_name: str) -> tuple[str, ...]:
+    """Validate reply addresses declared in campaign.toml."""
+    if not isinstance(raw, list | tuple):
+        raise ConfigurationError(f"{field_name} must be an array of email addresses.")
     addresses: list[str] = []
     seen: set[str] = set()
-    for value in raw.split(","):
+    for value in raw:
+        if not isinstance(value, str):
+            raise ConfigurationError(f"{field_name} must contain only email address strings.")
         address = normalize_email(value)
         if not address:
-            raise ConfigurationError(
-                "SENDGRID_REPLY_TO_LIST must not contain empty email addresses."
-            )
+            raise ConfigurationError(f"{field_name} must not contain empty email addresses.")
         if not EMAIL_PATTERN.fullmatch(address):
-            raise ConfigurationError(
-                f"SENDGRID_REPLY_TO_LIST contains an invalid email address: {address}"
-            )
+            raise ConfigurationError(f"{field_name} contains an invalid email address: {address}")
         if address in seen:
-            raise ConfigurationError(
-                f"SENDGRID_REPLY_TO_LIST contains a duplicate email address: {address}"
-            )
+            raise ConfigurationError(f"{field_name} contains a duplicate email address: {address}")
         seen.add(address)
         addresses.append(address)
     return tuple(addresses)
 
 
-def load_app_config(*, require_credentials: bool = True) -> AppConfig | None:
+def load_app_config(*, require_credentials: bool = True) -> RuntimeConfig | None:
     """Load runtime settings from .env and the process environment."""
     load_dotenv()
     if not require_credentials:
         return None
 
-    group_raw = _required_env("SENDGRID_UNSUBSCRIBE_GROUP_ID")
-    try:
-        group_id = int(group_raw)
-    except ValueError as exc:
-        raise ConfigurationError("SENDGRID_UNSUBSCRIBE_GROUP_ID must be an integer.") from exc
-    if group_id <= 0:
-        raise ConfigurationError("SENDGRID_UNSUBSCRIBE_GROUP_ID must be greater than zero.")
-
     database_path = Path(os.getenv("MAILER_DATABASE_PATH", str(DEFAULT_DATABASE_PATH)))
-    return AppConfig(
+    return RuntimeConfig(
         api_key=_required_env("SENDGRID_API_KEY"),
-        from_email=_required_env("SENDGRID_FROM_EMAIL"),
-        from_name=_required_env("SENDGRID_FROM_NAME"),
-        unsubscribe_group_id=group_id,
         database_path=database_path,
-        reply_to_list=_load_reply_to_list(),
     )
 
 
@@ -98,16 +80,16 @@ def load_campaign(campaign_dir: Path) -> Campaign:
     except tomllib.TOMLDecodeError as exc:
         raise ConfigurationError(f"Invalid TOML in {config_path}: {exc}") from exc
 
-    campaign_id = str(raw.get("campaign_id", "")).strip()
-    name = str(raw.get("name", "")).strip()
-    recipients_raw = str(raw.get("recipients_file", "")).strip()
+    campaign_id = _required_toml_string(raw, "campaign_id")
+    name = _required_toml_string(raw, "name")
+    recipients_raw = _required_toml_string(raw, "recipients_file")
+    from_email, from_name, reply_to_list, unsubscribe_group_id = validate_sender_settings(
+        from_email=_required_toml_string(raw, "from_email"),
+        from_name=_required_toml_string(raw, "from_name"),
+        reply_to_list=raw.get("reply_to_list"),
+        unsubscribe_group_id=raw.get("unsubscribe_group_id"),
+    )
     unsubscribe_url = str(raw.get("unsubscribe_url", "")).strip()
-    if not campaign_id:
-        raise ConfigurationError("campaign_id is required in campaign.toml.")
-    if not name:
-        raise ConfigurationError("name is required in campaign.toml.")
-    if not recipients_raw:
-        raise ConfigurationError("recipients_file is required in campaign.toml.")
     if unsubscribe_url:
         validate_unsubscribe_url(unsubscribe_url)
 
@@ -131,7 +113,54 @@ def load_campaign(campaign_dir: Path) -> Campaign:
         max_send_count=max_send_count,
         send_interval_seconds=float(send_interval),
         attachment_files=attachment_files,
+        from_email=from_email,
+        from_name=from_name,
+        reply_to_list=reply_to_list,
+        unsubscribe_group_id=unsubscribe_group_id,
     )
+
+
+def delivery_config(runtime: RuntimeConfig, campaign: Campaign) -> AppConfig:
+    """Combine machine-only credentials with the campaign's sender settings."""
+    return AppConfig(
+        api_key=runtime.api_key,
+        from_email=campaign.from_email,
+        from_name=campaign.from_name,
+        unsubscribe_group_id=campaign.unsubscribe_group_id,
+        database_path=runtime.database_path,
+        reply_to_list=campaign.reply_to_list,
+    )
+
+
+def _required_toml_string(raw: dict[str, object], name: str) -> str:
+    value = raw.get(name)
+    if not isinstance(value, str) or not value.strip():
+        raise ConfigurationError(f"{name} is required in campaign.toml.")
+    return value.strip()
+
+
+def validate_sender_settings(
+    *,
+    from_email: str,
+    from_name: str,
+    reply_to_list: object,
+    unsubscribe_group_id: object,
+) -> tuple[str, str, tuple[str, ...], int]:
+    """Validate sender settings shared by campaign loading and scaffolding."""
+    email = normalize_email(from_email)
+    if not EMAIL_PATTERN.fullmatch(email):
+        raise ConfigurationError(f"from_email is invalid: {email}")
+    name = from_name.strip()
+    if not name:
+        raise ConfigurationError("from_name must not be empty.")
+    replies = _load_reply_to_list(reply_to_list, field_name="reply_to_list")
+    if (
+        not isinstance(unsubscribe_group_id, int)
+        or isinstance(unsubscribe_group_id, bool)
+        or unsubscribe_group_id <= 0
+    ):
+        raise ConfigurationError("unsubscribe_group_id must be a positive integer.")
+    return email, name, replies, unsubscribe_group_id
 
 
 def _load_attachment_files(directory: Path, attachments_raw: object | None) -> tuple[Path, ...]:

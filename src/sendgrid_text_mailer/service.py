@@ -79,6 +79,7 @@ def prepare_delivery(
     """Retrieve suppressions and calculate the exact production delivery targets."""
     database = DeliveryDatabase(config.database_path)
     gateway = SendGridGateway(config)
+    gateway.verify_sender()
     unsubscribed = gateway.get_unsubscribed_emails()
     targets, skipped_items = filter_send_targets(
         prepared, database=database, unsubscribed=unsubscribed
@@ -104,6 +105,7 @@ def send_campaign(
     if mode == "test":
         database = DeliveryDatabase(config.database_path)
         gateway = SendGridGateway(config)
+        gateway.verify_sender()
         gateway.get_unsubscribed_emails()
         if not test_address:
             raise ValidationError("A test recipient address is required.")
