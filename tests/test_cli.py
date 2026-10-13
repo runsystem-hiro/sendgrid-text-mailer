@@ -2,7 +2,7 @@ from sendgrid_text_mailer import __version__
 
 
 def test_version() -> None:
-    assert __version__ == "0.4.0"
+    assert __version__ == "0.5.0"
 
 
 def test_campaign_create_parser() -> None:
