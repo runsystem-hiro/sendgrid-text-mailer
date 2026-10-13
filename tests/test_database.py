@@ -21,6 +21,23 @@ def test_already_sent(tmp_path: Path) -> None:
     assert runs[0]["status"] == "completed"
 
 
+def test_already_sent_ignores_legacy_test_delivery_with_a_production_campaign_id(
+    tmp_path: Path,
+) -> None:
+    database = DeliveryDatabase(tmp_path / "mailer.sqlite3")
+    database.start_run("test-run", "campaign-1", "test", 1)
+    database.record_delivery(
+        run_id="test-run",
+        campaign_id="campaign-1",
+        email="test@example.com",
+        status="sent",
+        response_status=202,
+    )
+    database.finish_run("test-run", sent=1, failed=0, skipped=0)
+
+    assert database.already_sent("campaign-1") == set()
+
+
 def test_existing_database_is_migrated_with_run_status(tmp_path: Path) -> None:
     path = tmp_path / "mailer.sqlite3"
     with sqlite3.connect(path) as connection:

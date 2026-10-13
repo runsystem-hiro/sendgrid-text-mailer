@@ -112,6 +112,13 @@ def test_send_campaign_passes_prepared_attachments_to_test_and_send(
         ("[TEST] Subject", (attachment,)),
         ("Subject", (attachment,)),
     ]
+    database = DeliveryDatabase(config.database_path)
+    assert database.already_sent("test-campaign-1") == set()
+    assert database.already_sent("campaign-1") == {"source@example.com"}
+    assert {row["campaign_id"] for row in database.recent_runs()} == {
+        "test-campaign-1",
+        "campaign-1",
+    }
 
 
 def test_send_campaign_reports_progress_and_failures(monkeypatch, tmp_path: Path) -> None:
