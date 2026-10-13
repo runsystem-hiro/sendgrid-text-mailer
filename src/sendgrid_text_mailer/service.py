@@ -117,24 +117,26 @@ def send_campaign(
         )
         targets = [test_message]
         skipped_items: list[tuple[RenderedMessage, str]] = []
+        tracking_campaign_id = f"test-{prepared.campaign.campaign_id}"
     else:
         plan = delivery_plan or prepare_delivery(prepared, config=config)
         database = plan.database
         gateway = plan.gateway
         targets = plan.targets
         skipped_items = plan.skipped_items
+        tracking_campaign_id = prepared.campaign.campaign_id
 
     run_id = str(uuid.uuid4())
     database.start_run(
         run_id,
-        prepared.campaign.campaign_id,
+        tracking_campaign_id,
         mode,
         len(targets) + len(skipped_items),
     )
     for message, status in skipped_items:
         database.record_delivery(
             run_id=run_id,
-            campaign_id=prepared.campaign.campaign_id,
+            campaign_id=tracking_campaign_id,
             email=message.recipient.email,
             status=status,
         )
@@ -150,7 +152,7 @@ def send_campaign(
                 failed += 1
                 database.record_delivery(
                     run_id=run_id,
-                    campaign_id=prepared.campaign.campaign_id,
+                    campaign_id=tracking_campaign_id,
                     email=message.recipient.email,
                     status="failed",
                     error_message=str(exc),
@@ -160,7 +162,7 @@ def send_campaign(
                 sent += 1
                 database.record_delivery(
                     run_id=run_id,
-                    campaign_id=prepared.campaign.campaign_id,
+                    campaign_id=tracking_campaign_id,
                     email=message.recipient.email,
                     status="sent",
                     response_status=result.status_code,

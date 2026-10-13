@@ -78,9 +78,12 @@ class DeliveryDatabase:
         with self.connect() as connection:
             rows = connection.execute(
                 """
-                SELECT DISTINCT recipient_email
+                SELECT DISTINCT deliveries.recipient_email
                 FROM deliveries
-                WHERE campaign_id = ? AND status = 'sent'
+                JOIN runs ON runs.run_id = deliveries.run_id
+                WHERE deliveries.campaign_id = ?
+                  AND deliveries.status = 'sent'
+                  AND runs.mode = 'send'
                 """,
                 (campaign_id,),
             )

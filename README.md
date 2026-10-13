@@ -120,8 +120,9 @@ attachments = [
 ]
 ```
 
-`campaign_id` は送信済み判定に使用します。同じ配信の途中で変更せず、
-別の案内では新しいIDを使用してください。
+`campaign_id` は本番送信の送信済み判定に使用します。同じ配信の途中で変更せず、
+別の案内では新しいIDを使用してください。`test --confirm TEST` は、この値を変更せず、
+DB内では `test-<campaign_id>` としてテスト履歴を分離します。
 
 `unsubscribe_url` には、受信者が配信停止を申請できる外部フォームの完成済み絶対 URL を指定します。
 本文に `{unsubscribe_url}` を記載すると、その URL に置き換わります。SendGrid ASM は送信メールに設定しません。
@@ -191,7 +192,7 @@ uv run sendgrid-text-mailer preview `
   --campaign .\campaigns\example `
   --limit 3
 
-# 3. 自分宛てにテスト送信（件名へ [TEST] を自動付与）
+# 3. 自分宛てにテスト送信（件名へ [TEST] を自動付与。DBでは test-<campaign_id> として記録）
 uv run sendgrid-text-mailer test `
   --campaign .\campaigns\example `
   --to your-address@example.com `
@@ -212,6 +213,64 @@ uv run sendgrid-text-mailer history --limit 20
 送信中は、対話型端末では1件ごとに同じ行を更新し、10件ごとに確定行を残します。失敗時は直ちに件数を表示しますが、宛先メールアドレスや本文は表示しません。出力をファイルへリダイレクトした場合は、10件ごとの確定行、失敗時、および完了時のみ出力します。推定残り時間は、設定した送信間隔と実測したAPI応答時間から算出します。
 
 `Ctrl+C` で中断した場合は、送信済み・失敗・未試行の件数を表示し、実行履歴には `interrupted` と記録します。強制終了などで終了処理が実行できなかった履歴は `running` のまま残り、完了扱いにはなりません。
+
+## キャンペーン別のSendGridメッセージIDをCSV出力
+
+指定した `campaign_id` に一致する本番の成功済み配信（`mode = 'send'`、
+`status = 'sent'`、かつ `message_id` あり）を、1配信1行でCSVへ出力します。
+DBは読み取り専用で開くため、配信履歴を変更しません。
+
+PowerShellで、リポジトリのルートから実行してください。`$campaignId` を対象の
+キャンペーンIDへ変更します。
+
+```powershell
+$campaignId = '2026-10Special-Sale'
+$outputPath = ".\data\$campaignId-message-ids.csv"
+
+@'
+import csv
+import sqlite3
+import sys
+from pathlib import Path
+
+campaign_id, output_path = sys.argv[1:]
+database_uri = "file:data/sendgrid-text-mailer.sqlite3?mode=ro"
+
+with sqlite3.connect(database_uri, uri=True) as connection:
+    connection.execute("PRAGMA query_only = ON")
+    rows = connection.execute(
+        """
+        SELECT campaign_id, recipient_email, message_id
+        FROM deliveries
+        JOIN runs ON runs.run_id = deliveries.run_id
+        WHERE deliveries.campaign_id = ?
+          AND deliveries.status = 'sent'
+          AND deliveries.message_id IS NOT NULL
+          AND runs.mode = 'send'
+        ORDER BY deliveries.created_at, deliveries.id
+        """,
+        (campaign_id,),
+    )
+    with Path(output_path).open("w", encoding="utf-8-sig", newline="") as file:
+        writer = csv.writer(file)
+        writer.writerow(["campaign_id", "recipient_email", "message_id"])
+        writer.writerows(rows)
+'@ | uv run python - $campaignId $outputPath
+```
+
+出力例です。Excelで開けるようUTF-8 BOM付きで保存します。同一宛先へ再送した履歴がある場合は、
+メッセージIDごとに複数行出力されます。
+
+```csv
+campaign_id,recipient_email,message_id
+2026-10Special-Sale,customer-one@example.com,example-message-id-001
+2026-10Special-Sale,customer-two@example.com,example-message-id-002
+2026-10Special-Sale,customer-three@example.com,example-message-id-003
+```
+
+`MAILER_DATABASE_PATH` で既定以外のDBを使用している場合は、スクリプト内の
+`database_uri` をそのDBのパスへ変更してください。出力CSVには個人情報を含むため、
+Gitへコミットしないでください。
 
 ## 配信停止の考え方
 
