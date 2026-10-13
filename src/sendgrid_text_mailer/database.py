@@ -150,17 +150,48 @@ class DeliveryDatabase:
                 (now_iso(), status, sent, failed, skipped, run_id),
             )
 
-    def recent_runs(self, limit: int = 20) -> list[sqlite3.Row]:
+    def recent_runs(
+        self, limit: int = 20, *, campaign_id: str | None = None
+    ) -> list[sqlite3.Row]:
         with self.connect() as connection:
+            query = """
+                SELECT run_id, campaign_id, mode, started_at, completed_at, status,
+                       total_count, sent_count, failed_count, skipped_count
+                FROM runs
+            """
+            parameters: tuple[str | int, ...] = ()
+            if campaign_id:
+                query += "WHERE campaign_id IN (?, ?)\n"
+                parameters = (campaign_id, f"test-{campaign_id}")
+            query += "ORDER BY started_at DESC\nLIMIT ?"
+            return list(
+                connection.execute(
+                    query,
+                    (*parameters, limit),
+                )
+            )
+
+    def message_id_rows(self, campaign_id: str, mode: str) -> list[sqlite3.Row]:
+        """Read successful delivery message IDs without changing delivery history."""
+        if mode not in {"send", "test"}:
+            raise ValueError("mode must be 'send' or 'test'")
+        tracking_campaign_id = f"test-{campaign_id}" if mode == "test" else campaign_id
+        database_uri = f"{self.path.resolve().as_uri()}?mode=ro"
+        with sqlite3.connect(database_uri, uri=True) as connection:
+            connection.row_factory = sqlite3.Row
+            connection.execute("PRAGMA query_only = ON")
             return list(
                 connection.execute(
                     """
-                    SELECT run_id, campaign_id, mode, started_at, completed_at, status,
-                           total_count, sent_count, failed_count, skipped_count
-                    FROM runs
-                    ORDER BY started_at DESC
-                    LIMIT ?
+                    SELECT deliveries.campaign_id, deliveries.recipient_email, deliveries.message_id
+                    FROM deliveries
+                    JOIN runs ON runs.run_id = deliveries.run_id
+                    WHERE deliveries.campaign_id = ?
+                      AND deliveries.status = 'sent'
+                      AND deliveries.message_id IS NOT NULL
+                      AND runs.mode = ?
+                    ORDER BY deliveries.created_at, deliveries.id
                     """,
-                    (limit,),
+                    (tracking_campaign_id, mode),
                 )
             )

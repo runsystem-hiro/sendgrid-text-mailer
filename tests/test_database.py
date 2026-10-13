@@ -38,6 +38,53 @@ def test_already_sent_ignores_legacy_test_delivery_with_a_production_campaign_id
     assert database.already_sent("campaign-1") == set()
 
 
+def test_recent_runs_filters_a_campaign_and_its_test_runs(tmp_path: Path) -> None:
+    database = DeliveryDatabase(tmp_path / "mailer.sqlite3")
+    for run_id, campaign_id, mode in (
+        ("send-run", "campaign-1", "send"),
+        ("test-run", "test-campaign-1", "test"),
+        ("other-run", "campaign-2", "send"),
+    ):
+        database.start_run(run_id, campaign_id, mode, 1)
+
+    runs = database.recent_runs(campaign_id="campaign-1")
+
+    assert {str(run["run_id"]) for run in runs} == {"send-run", "test-run"}
+
+
+def test_message_id_rows_separates_send_and_test_modes(tmp_path: Path) -> None:
+    database = DeliveryDatabase(tmp_path / "mailer.sqlite3")
+    for run_id, campaign_id, mode, email, message_id in (
+        ("send-run", "campaign-1", "send", "send@example.com", "send-message-id"),
+        ("test-run", "test-campaign-1", "test", "test@example.com", "test-message-id"),
+    ):
+        database.start_run(run_id, campaign_id, mode, 1)
+        database.record_delivery(
+            run_id=run_id,
+            campaign_id=campaign_id,
+            email=email,
+            status="sent",
+            response_status=202,
+            message_id=message_id,
+        )
+        database.finish_run(run_id, sent=1, failed=0, skipped=0)
+
+    assert [dict(row) for row in database.message_id_rows("campaign-1", "send")] == [
+        {
+            "campaign_id": "campaign-1",
+            "recipient_email": "send@example.com",
+            "message_id": "send-message-id",
+        }
+    ]
+    assert [dict(row) for row in database.message_id_rows("campaign-1", "test")] == [
+        {
+            "campaign_id": "test-campaign-1",
+            "recipient_email": "test@example.com",
+            "message_id": "test-message-id",
+        }
+    ]
+
+
 def test_existing_database_is_migrated_with_run_status(tmp_path: Path) -> None:
     path = tmp_path / "mailer.sqlite3"
     with sqlite3.connect(path) as connection:

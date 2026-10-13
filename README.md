@@ -205,6 +205,12 @@ uv run sendgrid-text-mailer send `
 
 # 5. 最近の実行履歴
 uv run sendgrid-text-mailer history --limit 20
+
+# 6. 指定したキャンペーンの実行履歴（本番・テストの両方）
+uv run sendgrid-text-mailer history `
+  --campaign-id example `
+  --limit 20
+
 ```
 
 本番送信前には、送信元、配信停止グループID、配信停止リスト件数、
@@ -214,52 +220,43 @@ uv run sendgrid-text-mailer history --limit 20
 
 `Ctrl+C` で中断した場合は、送信済み・失敗・未試行の件数を表示し、実行履歴には `interrupted` と記録します。強制終了などで終了処理が実行できなかった履歴は `running` のまま残り、完了扱いにはなりません。
 
+`history --campaign-id` には `campaign.toml` の本来の `campaign_id` を指定します。本番履歴に加え、同じキャンペーンの `test-<campaign_id>` として記録されたテスト履歴も表示します。
+
 ## キャンペーン別のSendGridメッセージIDをCSV出力
 
-指定した `campaign_id` に一致する本番の成功済み配信（`mode = 'send'`、
-`status = 'sent'`、かつ `message_id` あり）を、1配信1行でCSVへ出力します。
-DBは読み取り専用で開くため、配信履歴を変更しません。
-
-PowerShellで、リポジトリのルートから実行してください。`$campaignId` を対象の
-キャンペーンIDへ変更します。
+指定した `campaign_id` に一致する成功済み配信（`status = 'sent'` かつ
+`message_id` あり）を、1配信1行でCSVへ出力します。DBは読み取り専用で開くため、
+配信履歴を変更しません。PowerShellで、リポジトリのルートから実行してください。
 
 ```powershell
-$campaignId = '2026-10Special-Sale'
-$outputPath = ".\data\$campaignId-message-ids.csv"
+# 本番送信のメッセージIDを出力
+uv run sendgrid-text-mailer history export `
+  --campaign-id 2026-10Special-Sale
 
-@'
-import csv
-import sqlite3
-import sys
-from pathlib import Path
-
-campaign_id, output_path = sys.argv[1:]
-database_uri = "file:data/sendgrid-text-mailer.sqlite3?mode=ro"
-
-with sqlite3.connect(database_uri, uri=True) as connection:
-    connection.execute("PRAGMA query_only = ON")
-    rows = connection.execute(
-        """
-        SELECT campaign_id, recipient_email, message_id
-        FROM deliveries
-        JOIN runs ON runs.run_id = deliveries.run_id
-        WHERE deliveries.campaign_id = ?
-          AND deliveries.status = 'sent'
-          AND deliveries.message_id IS NOT NULL
-          AND runs.mode = 'send'
-        ORDER BY deliveries.created_at, deliveries.id
-        """,
-        (campaign_id,),
-    )
-    with Path(output_path).open("w", encoding="utf-8-sig", newline="") as file:
-        writer = csv.writer(file)
-        writer.writerow(["campaign_id", "recipient_email", "message_id"])
-        writer.writerows(rows)
-'@ | uv run python - $campaignId $outputPath
+# テスト送信のメッセージIDを出力
+uv run sendgrid-text-mailer history export `
+  --campaign-id 2026-10Special-Sale `
+  --mode test
 ```
 
-出力例です。Excelで開けるようUTF-8 BOM付きで保存します。同一宛先へ再送した履歴がある場合は、
-メッセージIDごとに複数行出力されます。
+`--campaign-id` には常に `campaign.toml` の本来のIDを指定します。テスト時の内部IDである
+`test-<campaign_id>` を手入力する必要はありません。既定の出力先は次のとおりです。
+
+```text
+本番:     data/<campaign-id>-ids.csv
+テスト:   data/test-<campaign-id>-ids.csv
+```
+
+CSVはUTF-8 BOM付きで保存します。同一宛先へ再送した履歴がある場合は、メッセージIDごとに
+複数行出力されます。出力先を変更する場合は `--output` を指定してください。既存のCSVは
+上書きせずエラーにするため、意図して上書きする場合だけ `--force` を追加します。
+
+```powershell
+uv run sendgrid-text-mailer history export `
+  --campaign-id 2026-10Special-Sale `
+  --output .\data\custom-message-ids.csv `
+  --force
+```
 
 ```csv
 campaign_id,recipient_email,message_id
