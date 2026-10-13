@@ -2,7 +2,7 @@ from sendgrid_text_mailer import __version__
 
 
 def test_version() -> None:
-    assert __version__ == "0.3.1"
+    assert __version__ == "0.4.0"
 
 
 def test_campaign_create_parser() -> None:
@@ -25,3 +25,24 @@ def test_campaign_create_parser() -> None:
     assert args.campaign_command == "create"
     assert args.campaign_id == "sample-1"
     assert args.unsubscribe_url is None
+
+
+def test_history_parser_accepts_campaign_id() -> None:
+    from sendgrid_text_mailer.cli import build_parser
+
+    args = build_parser().parse_args(["history", "--campaign-id", "campaign-1", "--limit", "5"])
+
+    assert args.campaign_id == "campaign-1"
+    assert args.limit == 5
+
+
+def test_history_export_parser_uses_safe_defaults() -> None:
+    from sendgrid_text_mailer.cli import build_parser
+
+    args = build_parser().parse_args(["history", "export", "--campaign-id", "campaign-1"])
+
+    assert args.history_command == "export"
+    assert args.campaign_id == "campaign-1"
+    assert args.mode == "send"
+    assert args.output is None
+    assert args.force is False
