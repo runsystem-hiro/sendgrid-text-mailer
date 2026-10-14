@@ -112,6 +112,7 @@ def load_campaign(campaign_dir: Path) -> Campaign:
         unsubscribe_url=unsubscribe_url,
         max_send_count=max_send_count,
         send_interval_seconds=float(send_interval),
+        signature_file=_signature_file(directory),
         attachment_files=attachment_files,
         from_email=from_email,
         from_name=from_name,
@@ -224,3 +225,8 @@ def validate_unsubscribe_url(value: str) -> None:
         raise ConfigurationError("unsubscribe_url must be an absolute HTTP or HTTPS URL.")
     if parsed.username or parsed.password:
         raise ConfigurationError("unsubscribe_url must not contain credentials.")
+
+
+def _signature_file(directory: Path) -> Path | None:
+    path = directory / "signature.txt"
+    return path if path.is_file() else None

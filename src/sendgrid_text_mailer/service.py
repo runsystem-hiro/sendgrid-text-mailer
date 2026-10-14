@@ -16,6 +16,7 @@ from .models import AppConfig, Campaign, PreparedAttachment, RenderedMessage
 from .progress import DeliveryProgress
 from .recipients import load_recipients, normalize_email
 from .template import render_messages
+from .template_sync import validate_template_snapshot
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,6 +37,7 @@ class DeliveryPlan:
 
 def prepare_campaign(campaign_dir: Path) -> PreparedCampaign:
     campaign = load_campaign(campaign_dir)
+    validate_template_snapshot(campaign.directory)
     recipients = load_recipients(campaign.recipients_file)
     messages = render_messages(campaign, recipients)
     if len(messages) > campaign.max_send_count:

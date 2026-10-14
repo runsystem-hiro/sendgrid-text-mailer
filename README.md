@@ -107,6 +107,73 @@ uv run sendgrid-text-mailer campaign create `
   --output .\campaigns\sample-1
 ```
 
+### 担当者別キャンペーンの一括作成
+
+展示会後のお礼メールなど、宛先CSVの担当者列ごとに送信元を分ける場合は、
+`campaign create-from-template` を使用します。送信は実行せず、担当者ごとに独立した
+キャンペーンを作成します。宛先CSVには `email` と `sender_id`、送信者CSVには
+`from_name` と `from_email` が必要です。`sender_id` と `from_name` は完全一致する必要があり、
+未登録担当者・空の担当者・重複した送信者名は生成前にエラーになります。
+
+`sender-list.csv` の必須列は `from_name` と `from_email` だけです。部署・役職・電話番号など、
+担当者ごとに変えたい署名要素は任意の列として追加できます。
+
+```csv
+from_name,from_email,sender_last_name,signature_file,department,phone
+営業担当者名,verified-sender@example.com,営業担当者の姓,signatures/sender-account.txt,営業部,00-0000-0000
+```
+
+件名・本文テンプレートでは、通常の宛先変数に加えて `{from_name}`、`{from_email}`、
+`{sender_id}` と、送信者CSVの任意列を使用できます。本文で `{signature}` を使用する場合は
+`--signature-template-file` を指定してください。署名テンプレートは固定見本として扱い、
+営業担当者が生成後の `signature.txt` を書き換えます。
+
+テンプレートディレクトリから生成する場合、`signature_file` は必須です。テンプレートディレクトリ
+からの相対パスで、担当者別マスター署名を指定してください。署名マスターは
+`signatures/` 配下に置き、複数行の署名をCSVへ記載しないでください。テンプレート直下の
+共通 `signature.txt` は使用しません。
+
+テンプレートディレクトリの `campaign.toml` に、全担当者で共通となる設定を置けます。
+
+```toml
+campaign_id_prefix = "japan-it-week-2026-autumn-thanks"
+name = "Japan IT Week 2026 秋 ご来場御礼"
+reply_to_list = []
+unsubscribe_group_id = 42437
+max_send_count = 177
+send_interval_seconds = 1.0
+```
+
+`campaign_id_prefix`、`name`、`unsubscribe_group_id`、`max_send_count` は必須です。
+`unsubscribe_url` と `reply_to_list` は必要な場合のみ追加します。担当者別の `from_name`、
+`from_email`、`sender_last_name` は引き続き `sender-list.csv` で管理します。
+
+テンプレートディレクトリから作成する場合は、以下を実行します。
+
+```powershell
+uv run sendgrid-text-mailer campaign create-from-template-dir `
+  --template-dir .\data\thanksmail-template `
+  --output .\campaigns
+```
+
+生成先が1件でも既に存在する場合は、上書きせずに中止します。生成後は、各ディレクトリで
+`signature.txt` を営業担当者本人の署名デザインへ編集できます。`body.txt` の `{signature}` は
+送信時に同ファイルの内容へ置き換わります。生成直後の `signature.txt` は固定見本のため、
+編集されていない場合、または `campaign.toml` の `from_name` が署名内にない場合は `validate` が
+エラーで停止します。編集後は必ず `validate`、`preview`、`test` を実施してから送信してください。
+
+生成時には `<campaign-id-prefix>-manifest.csv` も出力されます。担当者ごとのキャンペーンID、
+送信元、宛先件数、署名の対応状況（初期状態は `requires_replacement`）を確認し、署名回収の
+管理表として使用してください。宛先メールアドレスおよび本文は出力しません。
+
+担当者ごとのディレクトリ名と `campaign_id` は、送信元メールアドレスの `@` より前だけを
+使用します。`campaign.toml` の `name` は全担当者共通で、担当者名は含めません。
+
+テンプレートディレクトリから生成したキャンペーンは、テンプレート側の `campaign.toml`、
+`all.csv`、`sender-list.csv`、件名、本文、および `signatures/` 配下の署名マスターをハッシュで
+記録します。これらを変更した後は、既存キャンペーンの `validate`・`preview`・`test`・`send` が
+停止します。必ず再生成してください。
+
 ### campaign.toml
 
 ```toml

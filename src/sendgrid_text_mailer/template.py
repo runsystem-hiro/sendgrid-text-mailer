@@ -7,6 +7,12 @@ from string import Formatter
 from .errors import ValidationError
 from .models import Campaign, Recipient, RenderedMessage
 
+SIGNATURE_TEMPLATE_EXAMPLE = """株式会社ランシステム
+システム第２営業部 システム外販課
+山田太郎 mail: taro@mail.com
+ランシステム: https://www.runsystem.co.jp/
+サイバーテレワーク: https://www.cyber-telework.jp/"""
+
 
 def _read_template(path_name: str, path) -> str:
     if not path.is_file():
@@ -38,6 +44,22 @@ def render_messages(campaign: Campaign, recipients: list[Recipient]) -> list[Ren
     if "\n" in subject_template or "\r" in subject_template:
         raise ValidationError("subject.txt must contain exactly one line.")
 
+    if "signature" in template_fields(body_template):
+        if campaign.signature_file is None:
+            raise ValidationError("body.txt uses {signature} but signature.txt is not present.")
+        signature_template = _read_template("Signature", campaign.signature_file)
+        if signature_template == SIGNATURE_TEMPLATE_EXAMPLE:
+            raise ValidationError(
+                "signature.txt is still the template example. "
+                "Replace it with the sender's approved signature before validation."
+            )
+        if campaign.from_name and _compact(campaign.from_name) not in _compact(signature_template):
+            raise ValidationError(
+                "signature.txt does not contain the campaign from_name. "
+                "Replace it with the sender's approved signature before validation."
+            )
+        body_template = body_template.replace("{signature}", signature_template)
+
     required_fields = template_fields(subject_template) | template_fields(body_template)
     if "unsubscribe_url" in required_fields and not campaign.unsubscribe_url:
         raise ValidationError(
@@ -67,3 +89,7 @@ def render_messages(campaign: Campaign, recipients: list[Recipient]) -> list[Ren
         joined = "\n".join(f"- {error}" for error in errors)
         raise ValidationError(f"Template validation failed:\n{joined}")
     return messages
+
+
+def _compact(value: str) -> str:
+    return "".join(value.split())

@@ -11,6 +11,11 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from .batch_scaffold import (
+    batch_manifest_path,
+    create_sender_campaigns,
+    create_sender_campaigns_from_template_dir,
+)
 from .config import delivery_config, load_app_config
 from .database import DeliveryDatabase
 from .errors import MailerError, SendInterrupted, ValidationError
@@ -43,6 +48,31 @@ def build_parser() -> argparse.ArgumentParser:
     create_parser.add_argument("--output", type=Path)
     create_parser.add_argument("--max-send-count", type=int, default=500)
     create_parser.add_argument("--send-interval-seconds", type=float, default=1.0)
+    from_template_parser = campaign_subparsers.add_parser(
+        "create-from-template",
+        help="Create one campaign per assigned sender from CSV and text templates.",
+    )
+    from_template_parser.add_argument("--campaign-id-prefix", required=True)
+    from_template_parser.add_argument("--name-prefix", required=True)
+    from_template_parser.add_argument("--recipients-file", type=Path, required=True)
+    from_template_parser.add_argument("--sender-list-file", type=Path, required=True)
+    from_template_parser.add_argument("--subject-template-file", type=Path, required=True)
+    from_template_parser.add_argument("--body-template-file", type=Path, required=True)
+    from_template_parser.add_argument("--signature-template-file", type=Path)
+    from_template_parser.add_argument("--sender-id-column", default="sender_id")
+    from_template_parser.add_argument("--from-name-column", default="from_name")
+    from_template_parser.add_argument("--reply-to", action="append", default=[])
+    from_template_parser.add_argument("--unsubscribe-group-id", type=int, required=True)
+    from_template_parser.add_argument("--unsubscribe-url")
+    from_template_parser.add_argument("--output", type=Path, default=Path("campaigns"))
+    from_template_parser.add_argument("--max-send-count", type=int, required=True)
+    from_template_parser.add_argument("--send-interval-seconds", type=float, default=1.0)
+    from_template_dir_parser = campaign_subparsers.add_parser(
+        "create-from-template-dir",
+        help="Create campaigns using common settings in a template directory campaign.toml.",
+    )
+    from_template_dir_parser.add_argument("--template-dir", type=Path, required=True)
+    from_template_dir_parser.add_argument("--output", type=Path, default=Path("campaigns"))
 
     for command, help_text in (
         ("validate", "Validate campaign files without contacting SendGrid."),
@@ -94,6 +124,45 @@ def _print_summary(prepared) -> None:
 
 
 def command_campaign(args: argparse.Namespace) -> int:
+    if args.campaign_command == "create-from-template-dir":
+        generated = create_sender_campaigns_from_template_dir(
+            template_dir=args.template_dir,
+            output_dir=args.output,
+        )
+        config_path = args.template_dir / "campaign.toml"
+        print(f"Template config    : {config_path}")
+        print(f"Campaigns created : {len(generated)}")
+        print(f"Recipients        : {sum(item.recipient_count for item in generated)}")
+        print("Next step         : replace each signature.txt, then validate and preview.")
+        return 0
+    if args.campaign_command == "create-from-template":
+        generated = create_sender_campaigns(
+            campaign_id_prefix=args.campaign_id_prefix,
+            name_prefix=args.name_prefix,
+            recipients_file=args.recipients_file,
+            sender_list_file=args.sender_list_file,
+            subject_template_file=args.subject_template_file,
+            body_template_file=args.body_template_file,
+            signature_template_file=args.signature_template_file,
+            from_name_column=args.from_name_column,
+            sender_id_column=args.sender_id_column,
+            reply_to_list=tuple(args.reply_to),
+            unsubscribe_group_id=args.unsubscribe_group_id,
+            unsubscribe_url=args.unsubscribe_url,
+            output_dir=args.output,
+            max_send_count=args.max_send_count,
+            send_interval_seconds=args.send_interval_seconds,
+            signature_file_column=None,
+            signature_root=None,
+            template_source_dir=None,
+        )
+        print(f"Campaigns created: {len(generated)}")
+        print(f"Recipients        : {sum(item.recipient_count for item in generated)}")
+        print(f"Batch manifest    : {batch_manifest_path(args.output, args.campaign_id_prefix)}")
+        for item in generated:
+            print(f"  - {item.scaffold.directory} ({item.recipient_count} recipients)")
+        print("Next step         : validate and preview every generated campaign before sending.")
+        return 0
     if args.campaign_command != "create":
         raise ValidationError(f"Unknown campaign command: {args.campaign_command}")
     scaffold = create_campaign_scaffold(
