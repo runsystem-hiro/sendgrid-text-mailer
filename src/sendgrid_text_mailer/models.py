@@ -36,6 +36,7 @@ class Campaign:
     unsubscribe_url: str
     max_send_count: int
     send_interval_seconds: float
+    signature_file: Path | None = None
     attachment_files: tuple[Path, ...] = ()
     from_email: str = ""
     from_name: str = ""

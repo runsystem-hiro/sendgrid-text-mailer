@@ -1,10 +1,11 @@
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from sendgrid_text_mailer.errors import ValidationError
 from sendgrid_text_mailer.models import Campaign, Recipient
-from sendgrid_text_mailer.template import render_messages
+from sendgrid_text_mailer.template import SIGNATURE_TEMPLATE_EXAMPLE, render_messages
 
 
 def campaign(
@@ -57,4 +58,43 @@ def test_unsubscribe_url_requires_campaign_setting(tmp_path: Path) -> None:
     item = campaign(tmp_path, "Subject", "配信停止: {unsubscribe_url}", unsubscribe_url="")
 
     with pytest.raises(ValidationError, match="not set in campaign.toml"):
+        render_messages(item, [Recipient(email="user@example.com")])
+
+
+def test_signature_file_is_rendered_when_used_by_body(tmp_path: Path) -> None:
+    item = campaign(tmp_path, "Subject", "{recipient_block}\n{signature}")
+    signature_path = tmp_path / "signature.txt"
+    signature_path.write_text("営業部\n{from_name}\n", encoding="utf-8")
+    item = replace(item, signature_file=signature_path)
+    recipient = Recipient(email="user@example.com", fields={"from_name": "営業 太郎"})
+
+    message = render_messages(item, [recipient])[0]
+
+    assert message.body.endswith("営業部\n営業 太郎")
+
+
+def test_signature_placeholder_requires_signature_file(tmp_path: Path) -> None:
+    item = campaign(tmp_path, "Subject", "{signature}")
+
+    with pytest.raises(ValidationError, match="signature.txt is not present"):
+        render_messages(item, [Recipient(email="user@example.com")])
+
+
+def test_signature_template_example_requires_replacement(tmp_path: Path) -> None:
+    item = campaign(tmp_path, "Subject", "{signature}")
+    signature_path = tmp_path / "signature.txt"
+    signature_path.write_text(SIGNATURE_TEMPLATE_EXAMPLE + "\n", encoding="utf-8")
+    item = replace(item, signature_file=signature_path)
+
+    with pytest.raises(ValidationError, match="still the template example"):
+        render_messages(item, [Recipient(email="user@example.com")])
+
+
+def test_signature_requires_campaign_sender_name(tmp_path: Path) -> None:
+    item = campaign(tmp_path, "Subject", "{signature}")
+    signature_path = tmp_path / "signature.txt"
+    signature_path.write_text("株式会社サンプル\n営業部\n", encoding="utf-8")
+    item = replace(item, signature_file=signature_path, from_name="山田 太郎")
+
+    with pytest.raises(ValidationError, match="does not contain the campaign from_name"):
         render_messages(item, [Recipient(email="user@example.com")])
