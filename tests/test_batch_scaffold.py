@@ -6,6 +6,7 @@ from sendgrid_text_mailer.batch_scaffold import (
     create_sender_campaigns,
     create_sender_campaigns_from_template_dir,
 )
+from sendgrid_text_mailer.config import load_campaign
 from sendgrid_text_mailer.errors import ValidationError
 from sendgrid_text_mailer.service import prepare_campaign
 
@@ -118,6 +119,47 @@ def test_create_sender_campaigns_rejects_unlisted_assignment_before_creating_fil
         )
 
     assert not (tmp_path / "campaigns").exists()
+
+
+def test_create_sender_campaigns_uses_sender_reply_to_or_template_fallback(tmp_path: Path) -> None:
+    recipients = write(
+        tmp_path / "recipients.csv",
+        "email,sender_id,company\n"
+        "user-one@example.com,Alice Sales,Example One\n"
+        "user-two@example.com,Bob Sales,Example Two\n",
+    )
+    senders = write(
+        tmp_path / "senders.csv",
+        "from_name,from_email,reply_to_list\n"
+        "Alice Sales,alice@example.com,alice@example.com;team@example.com\n"
+        "Bob Sales,bob@example.com,\n",
+    )
+    subject, body, signature = create_templates(tmp_path)
+
+    created = create_sender_campaigns(
+        campaign_id_prefix="expo-thanks-2026",
+        name_prefix="Expo Thanks",
+        recipients_file=recipients,
+        sender_list_file=senders,
+        subject_template_file=subject,
+        body_template_file=body,
+        signature_template_file=signature,
+        from_name_column="from_name",
+        sender_id_column="sender_id",
+        reply_to_list=("shared@example.com",),
+        unsubscribe_group_id=12345,
+        unsubscribe_url=None,
+        output_dir=tmp_path / "campaigns",
+        max_send_count=1,
+        send_interval_seconds=0,
+    )
+
+    campaigns = {item.from_email: load_campaign(item.scaffold.directory) for item in created}
+    assert campaigns["alice@example.com"].reply_to_list == (
+        "alice@example.com",
+        "team@example.com",
+    )
+    assert campaigns["bob@example.com"].reply_to_list == ("shared@example.com",)
 
 
 def test_create_sender_campaigns_from_template_dir_uses_signature_master(tmp_path: Path) -> None:

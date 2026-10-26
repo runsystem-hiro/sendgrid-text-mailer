@@ -29,7 +29,7 @@ from_name,from_email
 営業担当者B,sender-b@example.com
 ```
 
-送信者 CSV には、部署・役職・電話番号など任意の列を追加できます。これらは件名・本文で `{department}` のように参照できます。共通して使える `{from_name}`、`{from_email}`、`{sender_id}` と、宛先 CSV の各列も同様に使用できます。
+送信者 CSV には、部署・役職・電話番号など任意の列を追加できます。これらは件名・本文で `{department}` のように参照できます。共通して使える `{from_name}`、`{from_email}`、`{sender_id}` と、宛先 CSV の各列も同様に使用できます。`reply_to_list` 列は例外で、`;` 区切りの返信先メールアドレスを担当者別に設定します。列がない場合またはセルが空の場合は、共通設定を使用します。
 
 ## 方法 1: CSV とテンプレートファイルを個別指定する
 
@@ -92,6 +92,16 @@ from_name,from_email,signature_file,department
 営業担当者A,sender-a@example.com,signatures/sender-a.txt,営業部
 営業担当者B,sender-b@example.com,signatures/sender-b.txt,営業部
 ```
+
+担当者別に返信先を変える場合は、`reply_to_list` 列を追加します。例えば、担当者本人と部署共有メールボックスの両方で返信を受ける設定は次のとおりです。複数アドレスは `;` 区切りで指定します。
+
+```csv
+from_name,from_email,signature_file,reply_to_list
+営業担当者A,sender-a@example.com,signatures/sender-a.txt,sender-a@example.com;sales@example.com
+営業担当者B,sender-b@example.com,signatures/sender-b.txt,
+```
+
+2 行目の空欄は `campaign.toml` の共通 `reply_to_list` を使用します。列自体を省略した場合も同じです。
 
 生成コマンドです。
 
