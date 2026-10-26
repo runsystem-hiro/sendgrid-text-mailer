@@ -111,6 +111,7 @@ def create_sender_campaigns(
     _require_columns(sender_columns, required_sender_columns, "Sender list CSV")
 
     sender_map: dict[str, dict[str, str]] = {}
+    sender_reply_to_lists: dict[str, tuple[str, ...]] = {}
     for row_number, sender in enumerate(senders, start=2):
         sender_name = sender[from_name_column].strip()
         sender_email = sender["from_email"].strip()
@@ -122,16 +123,18 @@ def create_sender_campaigns(
             raise ValidationError(
                 f"Sender list contains a duplicate sender name at line {row_number}."
             )
+        sender_reply_to_list = _sender_reply_to_list(sender, reply_to_list)
         try:
             validate_sender_settings(
                 from_email=sender_email,
                 from_name=sender_name,
-                reply_to_list=reply_to_list,
+                reply_to_list=sender_reply_to_list,
                 unsubscribe_group_id=unsubscribe_group_id,
             )
         except Exception as exc:
             raise ValidationError(f"Sender list line {row_number}: {exc}") from exc
         sender_map[sender_name] = sender
+        sender_reply_to_lists[sender_name] = sender_reply_to_list
 
     grouped: dict[str, list[dict[str, str]]] = defaultdict(list)
     for row_number, recipient in enumerate(recipients, start=2):
@@ -188,6 +191,7 @@ def create_sender_campaigns(
 
     generated: list[BatchCampaignScaffold] = []
     for sender_name, sender, assigned_recipients, directory in plans:
+        sender_reply_to_list = sender_reply_to_lists[sender_name]
         context = {
             **{
                 key.strip(): value.strip()
@@ -227,7 +231,7 @@ def create_sender_campaigns(
             recipients_file=recipients_file,
             from_email=context["from_email"],
             from_name=context["from_name"],
-            reply_to_list=reply_to_list,
+            reply_to_list=sender_reply_to_list,
             unsubscribe_group_id=unsubscribe_group_id,
             unsubscribe_url=unsubscribe_url,
             output_dir=directory,
@@ -343,6 +347,20 @@ def _config_reply_to_list(raw: dict[str, object]) -> tuple[str, ...]:
             "Template configuration reply_to_list must be an email address array."
         )
     return tuple(value)
+
+
+def _sender_reply_to_list(
+    sender: dict[str, str], fallback: tuple[str, ...]
+) -> tuple[str, ...]:
+    """Read an optional semicolon-separated sender-specific Reply-To list.
+
+    A missing column or blank value deliberately preserves the template-wide
+    Reply-To setting for backward compatibility.
+    """
+    raw = sender.get("reply_to_list", "").strip()
+    if not raw:
+        return fallback
+    return tuple(item.strip() for item in raw.split(";"))
 
 
 def _config_interval(raw: dict[str, object]) -> float:
