@@ -208,7 +208,7 @@ uv run sendgrid-text-mailer test `
   --confirm TEST
 ```
 
-Sender Verification と配信停止リストを確認できた場合だけ送信されます。受信したメールを確認します。
+Sender Verification、配信停止グループ、Global Unsubscribes を確認できた場合だけ送信されます。受信したメールを確認します。
 
 修正が必要な場合は、`subject.txt` または `body.txt` を編集し、検証・プレビュー・テスト送信を再実行します。
 
@@ -227,11 +227,11 @@ uv run sendgrid-text-mailer send `
 - 送信元
 - Reply-To
 - 配信停止グループID
-- 配信停止済み件数
+- 配信停止済み件数（グループ・Global Unsubscribes・両方の内訳）
 - 送信可能件数
 - 除外件数
 
-送信元の Sender Verification または配信停止リストを取得できない場合は、安全のため送信されません。
+送信元の Sender Verification、配信停止グループ、または Global Unsubscribes を取得できない場合は、安全のため送信されません。
 
 ---
 
@@ -242,6 +242,8 @@ uv run sendgrid-text-mailer history --limit 20
 ```
 
 キャンペーンID、送信結果、成功件数、失敗件数を確認します。
+
+配信停止による除外は、グループ・Global Unsubscribes・両方・旧履歴の件数として表示されます。宛先メールアドレスは通常の履歴には表示されません。
 
 同じキャンペーンを再実行した場合、送信済みの宛先は重複送信されません。
 

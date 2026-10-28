@@ -33,6 +33,9 @@ class DeliveryPlan:
     targets: list[RenderedMessage]
     skipped_items: list[tuple[RenderedMessage, str]]
     suppression_count: int
+    group_suppression_count: int
+    global_suppression_count: int
+    shared_suppression_count: int
 
 
 def prepare_campaign(campaign_dir: Path) -> PreparedCampaign:
@@ -56,7 +59,8 @@ def filter_send_targets(
     prepared: PreparedCampaign,
     *,
     database: DeliveryDatabase,
-    unsubscribed: set[str],
+    group_unsubscribed: set[str],
+    global_unsubscribed: set[str],
 ) -> tuple[list[RenderedMessage], list[tuple[RenderedMessage, str]]]:
     already_sent = database.already_sent(prepared.campaign.campaign_id)
     targets: list[RenderedMessage] = []
@@ -64,8 +68,12 @@ def filter_send_targets(
 
     for message in prepared.messages:
         email = normalize_email(message.recipient.email)
-        if email in unsubscribed:
-            skipped.append((message, "skipped_unsubscribed"))
+        if email in group_unsubscribed and email in global_unsubscribed:
+            skipped.append((message, "skipped_unsubscribed_both"))
+        elif email in global_unsubscribed:
+            skipped.append((message, "skipped_unsubscribed_global"))
+        elif email in group_unsubscribed:
+            skipped.append((message, "skipped_unsubscribed_group"))
         elif email in already_sent:
             skipped.append((message, "skipped_already_sent"))
         else:
@@ -82,16 +90,24 @@ def prepare_delivery(
     database = DeliveryDatabase(config.database_path)
     gateway = SendGridGateway(config)
     gateway.verify_sender()
-    unsubscribed = gateway.get_unsubscribed_emails()
+    group_unsubscribed = gateway.get_group_unsubscribed_emails()
+    global_unsubscribed = gateway.get_global_unsubscribed_emails()
     targets, skipped_items = filter_send_targets(
-        prepared, database=database, unsubscribed=unsubscribed
+        prepared,
+        database=database,
+        group_unsubscribed=group_unsubscribed,
+        global_unsubscribed=global_unsubscribed,
     )
+    shared_suppressions = group_unsubscribed & global_unsubscribed
     return DeliveryPlan(
         database=database,
         gateway=gateway,
         targets=targets,
         skipped_items=skipped_items,
-        suppression_count=len(unsubscribed),
+        suppression_count=len(group_unsubscribed | global_unsubscribed),
+        group_suppression_count=len(group_unsubscribed - global_unsubscribed),
+        global_suppression_count=len(global_unsubscribed - group_unsubscribed),
+        shared_suppression_count=len(shared_suppressions),
     )
 
 
@@ -108,7 +124,8 @@ def send_campaign(
         database = DeliveryDatabase(config.database_path)
         gateway = SendGridGateway(config)
         gateway.verify_sender()
-        gateway.get_unsubscribed_emails()
+        gateway.get_group_unsubscribed_emails()
+        gateway.get_global_unsubscribed_emails()
         if not test_address:
             raise ValidationError("A test recipient address is required.")
         source = prepared.messages[0]

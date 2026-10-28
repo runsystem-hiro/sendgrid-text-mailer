@@ -85,6 +85,24 @@ def test_message_id_rows_separates_send_and_test_modes(tmp_path: Path) -> None:
     ]
 
 
+def test_exclusion_counts_are_reason_specific_and_privacy_safe(tmp_path: Path) -> None:
+    database = DeliveryDatabase(tmp_path / "mailer.sqlite3")
+    database.start_run("run-1", "campaign-1", "send", 4)
+    for email, status in (
+        ("group@example.com", "skipped_unsubscribed_group"),
+        ("global@example.com", "skipped_unsubscribed_global"),
+        ("both@example.com", "skipped_unsubscribed_both"),
+        ("legacy@example.com", "skipped_unsubscribed"),
+    ):
+        database.record_delivery(
+            run_id="run-1", campaign_id="campaign-1", email=email, status=status
+        )
+
+    assert database.exclusion_counts(["run-1"]) == {
+        "run-1": {"group": 1, "global": 1, "both": 1, "legacy": 1}
+    }
+
+
 def test_existing_database_is_migrated_with_run_status(tmp_path: Path) -> None:
     path = tmp_path / "mailer.sqlite3"
     with sqlite3.connect(path) as connection:

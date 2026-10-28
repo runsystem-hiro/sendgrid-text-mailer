@@ -169,6 +169,35 @@ class DeliveryDatabase:
                 )
             )
 
+    def exclusion_counts(self, run_ids: list[str]) -> dict[str, dict[str, int]]:
+        """Return privacy-safe, reason-specific suppression counts per run."""
+        if not run_ids:
+            return {}
+        placeholders = ", ".join("?" for _ in run_ids)
+        with self.connect() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT run_id,
+                       SUM(status = 'skipped_unsubscribed_group') AS group_count,
+                       SUM(status = 'skipped_unsubscribed_global') AS global_count,
+                       SUM(status = 'skipped_unsubscribed_both') AS both_count,
+                       SUM(status = 'skipped_unsubscribed') AS legacy_count
+                FROM deliveries
+                WHERE run_id IN ({placeholders})
+                GROUP BY run_id
+                """,
+                run_ids,
+            )
+            return {
+                str(row["run_id"]): {
+                    "group": int(row["group_count"] or 0),
+                    "global": int(row["global_count"] or 0),
+                    "both": int(row["both_count"] or 0),
+                    "legacy": int(row["legacy_count"] or 0),
+                }
+                for row in rows
+            }
+
     def message_id_rows(self, campaign_id: str, mode: str) -> list[sqlite3.Row]:
         """Read successful delivery message IDs without changing delivery history."""
         if mode not in {"send", "test"}:

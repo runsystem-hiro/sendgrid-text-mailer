@@ -30,7 +30,9 @@ def test_filter_send_targets(tmp_path: Path) -> None:
     )
     messages = [
         RenderedMessage(Recipient("sent@example.com"), "Subject", "Body"),
-        RenderedMessage(Recipient("stop@example.com"), "Subject", "Body"),
+        RenderedMessage(Recipient("group@example.com"), "Subject", "Body"),
+        RenderedMessage(Recipient("global@example.com"), "Subject", "Body"),
+        RenderedMessage(Recipient("both@example.com"), "Subject", "Body"),
         RenderedMessage(Recipient("new@example.com"), "Subject", "Body"),
     ]
     prepared = PreparedCampaign(campaign=campaign, messages=messages, attachments=())
@@ -47,13 +49,16 @@ def test_filter_send_targets(tmp_path: Path) -> None:
     targets, skipped = filter_send_targets(
         prepared,
         database=database,
-        unsubscribed={"stop@example.com"},
+        group_unsubscribed={"group@example.com", "both@example.com"},
+        global_unsubscribed={"global@example.com", "both@example.com"},
     )
 
     assert [item.recipient.email for item in targets] == ["new@example.com"]
     assert [status for _, status in skipped] == [
         "skipped_already_sent",
-        "skipped_unsubscribed",
+        "skipped_unsubscribed_group",
+        "skipped_unsubscribed_global",
+        "skipped_unsubscribed_both",
     ]
 
 
@@ -92,7 +97,10 @@ def test_send_campaign_passes_prepared_attachments_to_test_and_send(
         def __init__(self, _config: AppConfig) -> None:
             pass
 
-        def get_unsubscribed_emails(self) -> set[str]:
+        def get_group_unsubscribed_emails(self) -> set[str]:
+            return set()
+
+        def get_global_unsubscribed_emails(self) -> set[str]:
             return set()
 
         def verify_sender(self) -> None:
@@ -158,7 +166,10 @@ def test_send_campaign_reports_progress_and_failures(monkeypatch, tmp_path: Path
         def __init__(self, _config: AppConfig) -> None:
             pass
 
-        def get_unsubscribed_emails(self) -> set[str]:
+        def get_group_unsubscribed_emails(self) -> set[str]:
+            return set()
+
+        def get_global_unsubscribed_emails(self) -> set[str]:
             return set()
 
         def verify_sender(self) -> None:
@@ -224,7 +235,10 @@ def test_send_campaign_records_keyboard_interrupt(monkeypatch, tmp_path: Path) -
         def __init__(self, _config: AppConfig) -> None:
             pass
 
-        def get_unsubscribed_emails(self) -> set[str]:
+        def get_group_unsubscribed_emails(self) -> set[str]:
+            return set()
+
+        def get_global_unsubscribed_emails(self) -> set[str]:
             return set()
 
         def verify_sender(self) -> None:

@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -87,6 +88,53 @@ def test_verify_sender_accepts_verified_matching_from_address(monkeypatch, tmp_p
     )
 
     gateway.verify_sender()
+
+
+def test_get_global_unsubscribed_emails_pages_and_normalizes(monkeypatch, tmp_path: Path) -> None:
+    gateway = SendGridGateway(config(tmp_path))
+    first_page = [
+        {"email": "FIRST@example.com"},
+        *({"email": f"user-{index}@example.com"} for index in range(1, 500)),
+    ]
+    calls: list[dict[str, int]] = []
+
+    def fake_get(*, query_params):
+        calls.append(query_params)
+        if query_params["offset"] == 0:
+            return SimpleNamespace(status_code=200, body=json.dumps(first_page).encode())
+        return SimpleNamespace(status_code=200, body=b'[{"email": "LAST@example.com"}]')
+
+    monkeypatch.setattr(
+        gateway.client,
+        "client",
+        SimpleNamespace(suppression=SimpleNamespace(unsubscribes=SimpleNamespace(get=fake_get))),
+    )
+
+    assert gateway.get_global_unsubscribed_emails() == {
+        "first@example.com",
+        *(f"user-{index}@example.com" for index in range(1, 500)),
+        "last@example.com",
+    }
+    assert calls == [{"limit": 500, "offset": 0}, {"limit": 500, "offset": 500}]
+
+
+def test_get_global_unsubscribed_emails_fails_closed_on_non_success(
+    monkeypatch, tmp_path: Path
+) -> None:
+    gateway = SendGridGateway(config(tmp_path))
+
+    def fake_get(*, query_params):
+        assert query_params == {"limit": 500, "offset": 0}
+        return SimpleNamespace(status_code=403, body=b"forbidden")
+
+    monkeypatch.setattr(
+        gateway.client,
+        "client",
+        SimpleNamespace(suppression=SimpleNamespace(unsubscribes=SimpleNamespace(get=fake_get))),
+    )
+
+    with pytest.raises(SendGridError, match="global unsubscribe list: HTTP 403"):
+        gateway.get_global_unsubscribed_emails()
 
 
 def test_verify_sender_rejects_unverified_matching_from_address(
