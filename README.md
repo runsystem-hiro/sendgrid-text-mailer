@@ -10,7 +10,7 @@ SendGrid で、CSV の宛先ごとにパーソナライズした `text/plain` �
 - PDF・PNG・JPEG の通常添付
 - `validate`、`preview`、`test`、`send` を分離した送信フロー
 - 送信済み宛先の重複送信防止と、SQLite による実行履歴の保存
-- SendGrid の送信元検証と配信停止グループを送信前に確認
+- SendGrid の送信元検証、配信停止グループ、Global Unsubscribes を送信前に確認
 - 担当者別キャンペーンの一括生成と、成功済みメッセージ ID の CSV 出力
 
 ## 対象外
@@ -20,7 +20,7 @@ HTML メール、本文内画像、PDF・PNG・JPEG 以外の添付、開封・�
 ## 安全上の仕様
 
 - 本番送信は `--confirm SEND`、テスト送信は `--confirm TEST` が必須です。
-- `test` と `send` は、送信元が SendGrid で検証済みであり、配信停止グループを取得できる場合だけ送信します。確認できない場合は 1 件も送信しません。
+- `test` と `send` は、送信元が SendGrid で検証済みであり、配信停止グループと Global Unsubscribes を取得できる場合だけ送信します。確認できない場合は 1 件も送信しません。
 - 本番送信の重複判定には `campaign_id + email` を使用します。別の案内には新しい `campaign_id` を使用してください。テスト履歴は `test-<campaign_id>` として本番履歴から分離されます。
 - 添付は 1 ファイル 10 MiB、合計 15 MiB までです。実運用の宛先 CSV、添付、キャンペーン、SQLite DB、`.env` は Git にコミットしないでください。
 
@@ -138,6 +138,8 @@ uv run sendgrid-text-mailer history export `
 ```
 
 テスト送信の ID は `--mode test` を追加します。既定では `data/<campaign-id>-ids.csv` に UTF-8 BOM 付きで出力されます。出力 CSV には個人情報を含むため、Git にコミットしないでください。
+
+`history` では、除外件数をグループ配信停止・Global Unsubscribes・両方・旧履歴に分けて集計表示します。通常の履歴表示に宛先メールアドレスは含まれません。
 
 出力先を変更する場合は `--output .\data\custom-message-ids.csv` を指定します。既存ファイルを上書きする場合だけ `--force` を追加してください。
 

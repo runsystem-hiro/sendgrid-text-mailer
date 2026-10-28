@@ -1,4 +1,8 @@
+import argparse
+from pathlib import Path
+
 from sendgrid_text_mailer import __version__
+from sendgrid_text_mailer.database import DeliveryDatabase
 
 
 def test_version() -> None:
@@ -99,3 +103,32 @@ def test_history_export_parser_uses_safe_defaults() -> None:
     assert args.mode == "send"
     assert args.output is None
     assert args.force is False
+
+
+def test_history_shows_privacy_safe_exclusion_reason_counts(
+    monkeypatch, tmp_path: Path, capsys
+) -> None:
+    database_path = tmp_path / "mailer.sqlite3"
+    database = DeliveryDatabase(database_path)
+    database.start_run("run-1", "campaign-1", "send", 3)
+    for email, status in (
+        ("group@example.com", "skipped_unsubscribed_group"),
+        ("global@example.com", "skipped_unsubscribed_global"),
+        ("both@example.com", "skipped_unsubscribed_both"),
+    ):
+        database.record_delivery(
+            run_id="run-1", campaign_id="campaign-1", email=email, status=status
+        )
+    database.finish_run("run-1", sent=0, failed=0, skipped=3)
+
+    monkeypatch.setattr("sendgrid_text_mailer.cli._history_database_path", lambda: database_path)
+    from sendgrid_text_mailer.cli import command_history
+
+    args = argparse.Namespace(history_command=None, limit=20, campaign_id=None)
+    assert command_history(args) == 0
+    output = capsys.readouterr().out
+
+    assert "GROUP GLOBAL BOTH LEGACY" in output
+    assert "group@example.com" not in output
+    assert "global@example.com" not in output
+    assert "both@example.com" not in output

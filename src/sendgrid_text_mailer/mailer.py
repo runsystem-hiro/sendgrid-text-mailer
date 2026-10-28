@@ -35,7 +35,7 @@ class SendGridGateway:
         self.config = config
         self.client = SendGridAPIClient(config.api_key)
 
-    def get_unsubscribed_emails(self) -> set[str]:
+    def get_group_unsubscribed_emails(self) -> set[str]:
         """Return all addresses suppressed for the configured ASM group."""
         try:
             response = self.client.client.asm.groups._(
@@ -63,6 +63,41 @@ class SendGridGateway:
             if isinstance(item, dict) and isinstance(item.get("email"), str):
                 emails.add(normalize_email(item["email"]))
         return emails
+
+    def get_global_unsubscribed_emails(self) -> set[str]:
+        """Return all globally suppressed addresses, paging until the final response."""
+        page_size = 500
+        offset = 0
+        emails: set[str] = set()
+        while True:
+            try:
+                response = self.client.client.suppression.unsubscribes.get(
+                    query_params={"limit": page_size, "offset": offset}
+                )
+            except Exception as exc:
+                raise SendGridError(f"Failed to retrieve global unsubscribe list: {exc}") from exc
+
+            if response.status_code != 200:
+                raise SendGridError(
+                    "Failed to retrieve global unsubscribe list: "
+                    f"HTTP {response.status_code}: {_response_body(response.body)}"
+                )
+
+            try:
+                payload = json.loads(response.body)
+            except (TypeError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise SendGridError(
+                    "SendGrid returned an invalid global unsubscribe response."
+                ) from exc
+
+            if not isinstance(payload, list):
+                raise SendGridError("SendGrid returned an unexpected global unsubscribe response.")
+            for item in payload:
+                if isinstance(item, dict) and isinstance(item.get("email"), str):
+                    emails.add(normalize_email(item["email"]))
+            if len(payload) < page_size:
+                return emails
+            offset += len(payload)
 
     def verify_sender(self) -> None:
         """Fail closed unless the campaign's From address is a verified sender."""

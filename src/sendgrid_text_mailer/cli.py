@@ -240,6 +240,12 @@ def command_send(args: argparse.Namespace) -> int:
     plan = prepare_delivery(prepared, config=config)
     print("Sender      : verified (fail closed)")
     print(f"Suppressed  : {plan.suppression_count}")
+    print(
+        "Suppression detail: "
+        f"group only {plan.group_suppression_count} | "
+        f"global only {plan.global_suppression_count} | "
+        f"both {plan.shared_suppression_count}"
+    )
     print(f"Eligible    : {len(plan.targets)}")
     print(f"Skipped     : {len(plan.skipped_items)}")
     print("Suppression : verified (fail closed)")
@@ -317,16 +323,22 @@ def command_history(args: argparse.Namespace) -> int:
     if not rows:
         print("No delivery history found.")
         return 0
+    exclusion_counts = DeliveryDatabase(database_path).exclusion_counts(
+        [str(row["run_id"]) for row in rows]
+    )
     print(
         "STARTED_AT                MODE  STATUS       CAMPAIGN                 "
-        "TOTAL SENT FAIL SKIP RUN_ID"
+        "TOTAL SENT FAIL SKIP GROUP GLOBAL BOTH LEGACY RUN_ID"
     )
     for row in rows:
+        counts = exclusion_counts.get(str(row["run_id"]), {})
         print(
             f"{row['started_at']:<25} {row['mode']:<5} {row['status']:<12} "
             f"{row['campaign_id'][:24]:<24} {row['total_count']:>5} "
             f"{row['sent_count']:>4} {row['failed_count']:>4} "
-            f"{row['skipped_count']:>4} {row['run_id']}"
+            f"{row['skipped_count']:>4} {counts.get('group', 0):>5} "
+            f"{counts.get('global', 0):>6} {counts.get('both', 0):>4} "
+            f"{counts.get('legacy', 0):>6} {row['run_id']}"
         )
     return 0
 
