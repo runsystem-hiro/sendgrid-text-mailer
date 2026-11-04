@@ -272,6 +272,14 @@ def _print_delivery_settings(config: AppConfig) -> None:
     else:
         print("Reply-To    : not set (replies go to the From address)")
     print(f"Group ID    : {config.unsubscribe_group_id}")
+    print(
+        "Suppressions: "
+        + (
+            "GLOBAL UNSUBSCRIBES BYPASS ENABLED (group unsubscribes enforced)"
+            if config.bypass_global_unsubscribe_management
+            else "enforced"
+        )
+    )
 
 
 def _history_database_path() -> Path:

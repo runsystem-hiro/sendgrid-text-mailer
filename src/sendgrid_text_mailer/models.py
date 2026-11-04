@@ -15,6 +15,7 @@ class AppConfig:
     unsubscribe_group_id: int
     database_path: Path
     reply_to_list: tuple[str, ...] = ()
+    bypass_global_unsubscribe_management: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,6 +43,7 @@ class Campaign:
     from_name: str = ""
     reply_to_list: tuple[str, ...] = ()
     unsubscribe_group_id: int = 0
+    bypass_global_unsubscribe_management: bool = False
 
 
 @dataclass(frozen=True, slots=True)

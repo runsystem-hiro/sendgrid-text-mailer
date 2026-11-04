@@ -68,7 +68,14 @@ def filter_send_targets(
 
     for message in prepared.messages:
         email = normalize_email(message.recipient.email)
-        if email in group_unsubscribed and email in global_unsubscribed:
+        if prepared.campaign.bypass_global_unsubscribe_management:
+            if email in group_unsubscribed:
+                skipped.append((message, "skipped_unsubscribed_group"))
+            elif email in already_sent:
+                skipped.append((message, "skipped_already_sent"))
+            else:
+                targets.append(message)
+        elif email in group_unsubscribed and email in global_unsubscribed:
             skipped.append((message, "skipped_unsubscribed_both"))
         elif email in global_unsubscribed:
             skipped.append((message, "skipped_unsubscribed_global"))

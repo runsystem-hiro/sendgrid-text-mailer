@@ -71,6 +71,31 @@ def test_send_sets_all_configured_reply_to_addresses(monkeypatch, tmp_path: Path
     ]
 
 
+def test_send_bypasses_global_unsubscribes_only_when_configured(
+    monkeypatch, tmp_path: Path
+) -> None:
+    gateway = SendGridGateway(
+        AppConfig(
+            api_key="test-key",
+            from_email="sender@example.com",
+            from_name="Example Sender",
+            unsubscribe_group_id=12345,
+            database_path=tmp_path / "mailer.sqlite3",
+            bypass_global_unsubscribe_management=True,
+        )
+    )
+    captured = {}
+
+    def fake_send(mail):
+        captured.update(mail.get())
+        return SimpleNamespace(status_code=202, body=b"", headers={})
+
+    monkeypatch.setattr(gateway.client, "send", fake_send)
+    gateway.send(RenderedMessage(Recipient(email="user@example.com"), "Subject", "Body"))
+
+    assert captured["mail_settings"] == {"bypass_unsubscribe_management": {"enable": True}}
+
+
 def test_verify_sender_accepts_verified_matching_from_address(monkeypatch, tmp_path: Path) -> None:
     gateway = SendGridGateway(config(tmp_path))
 

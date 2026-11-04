@@ -112,6 +112,17 @@ unsubscribe_group_id = 12345
 この4項目は必須です。.env の値へのフォールバックはありません。送信元アドレスは SendGrid で
 検証済みにしてください。
 
+### Global Unsubscribes だけを回避する
+
+既定では `false` であり、グループ配信停止と Global Unsubscribes の宛先を除外します。グローバルまたは他のメルマガの配信拒否者にも、このキャンペーンだけ送信する場合だけ、`campaign.toml` に次を追加します。このキャンペーンの配信停止グループに登録された宛先は送信しません。
+
+```toml
+# Global Unsubscribes だけを回避する。グループ配信拒否、バウンス、スパム報告は維持する。
+bypass_global_unsubscribe_management = true
+```
+
+この設定でも、送信元検証と各配信停止リストの取得は fail-closed で行います。送信コマンドの `Suppressions: GLOBAL UNSUBSCRIBES BYPASS ENABLED (group unsubscribes enforced)` を確認してください。
+
 ---
 
 ## 4. 件名を編集する
