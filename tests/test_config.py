@@ -76,6 +76,28 @@ def test_load_campaign_reads_campaign_sender_settings(tmp_path: Path) -> None:
     assert campaign.from_name == "Example Sender"
     assert campaign.reply_to_list == ("reply@example.com",)
     assert campaign.unsubscribe_group_id == 12345
+    assert campaign.bypass_global_unsubscribe_management is False
+
+
+def test_load_campaign_reads_bypass_global_unsubscribe_management(tmp_path: Path) -> None:
+    write_campaign(tmp_path)
+    with (tmp_path / "campaign.toml").open("a", encoding="utf-8") as file:
+        file.write("\nbypass_global_unsubscribe_management = true\n")
+
+    campaign = load_campaign(tmp_path)
+
+    assert campaign.bypass_global_unsubscribe_management is True
+
+
+def test_load_campaign_rejects_non_boolean_bypass_global_unsubscribe_management(
+    tmp_path: Path,
+) -> None:
+    write_campaign(tmp_path)
+    with (tmp_path / "campaign.toml").open("a", encoding="utf-8") as file:
+        file.write('\nbypass_global_unsubscribe_management = "true"\n')
+
+    with pytest.raises(ConfigurationError, match="must be true or false"):
+        load_campaign(tmp_path)
 
 
 def write_pdf(path: Path, content: bytes = b"%PDF-1.7\nexample") -> None:

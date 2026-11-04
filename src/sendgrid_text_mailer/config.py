@@ -92,6 +92,9 @@ def load_campaign(campaign_dir: Path) -> Campaign:
     unsubscribe_url = str(raw.get("unsubscribe_url", "")).strip()
     if unsubscribe_url:
         validate_unsubscribe_url(unsubscribe_url)
+    bypass_global_unsubscribe_management = _optional_toml_bool(
+        raw, "bypass_global_unsubscribe_management", default=False
+    )
 
     max_send_count = raw.get("max_send_count", 500)
     send_interval = raw.get("send_interval_seconds", 1.0)
@@ -118,6 +121,7 @@ def load_campaign(campaign_dir: Path) -> Campaign:
         from_name=from_name,
         reply_to_list=reply_to_list,
         unsubscribe_group_id=unsubscribe_group_id,
+        bypass_global_unsubscribe_management=bypass_global_unsubscribe_management,
     )
 
 
@@ -130,6 +134,7 @@ def delivery_config(runtime: RuntimeConfig, campaign: Campaign) -> AppConfig:
         unsubscribe_group_id=campaign.unsubscribe_group_id,
         database_path=runtime.database_path,
         reply_to_list=campaign.reply_to_list,
+        bypass_global_unsubscribe_management=campaign.bypass_global_unsubscribe_management,
     )
 
 
@@ -138,6 +143,13 @@ def _required_toml_string(raw: dict[str, object], name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ConfigurationError(f"{name} is required in campaign.toml.")
     return value.strip()
+
+
+def _optional_toml_bool(raw: dict[str, object], name: str, *, default: bool) -> bool:
+    value = raw.get(name, default)
+    if not isinstance(value, bool):
+        raise ConfigurationError(f"{name} must be true or false.")
+    return value
 
 
 def validate_sender_settings(

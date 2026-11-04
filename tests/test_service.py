@@ -62,6 +62,51 @@ def test_filter_send_targets(tmp_path: Path) -> None:
     ]
 
 
+def test_filter_send_targets_bypasses_global_unsubscribes_but_keeps_group_unsubscribes(
+    tmp_path: Path,
+) -> None:
+    campaign = Campaign(
+        campaign_id="campaign-1",
+        name="Emergency",
+        directory=tmp_path,
+        recipients_file=tmp_path / "recipients.csv",
+        subject_file=tmp_path / "subject.txt",
+        body_file=tmp_path / "body.txt",
+        unsubscribe_url="",
+        max_send_count=10,
+        send_interval_seconds=0,
+        bypass_global_unsubscribe_management=True,
+    )
+    messages = [
+        RenderedMessage(Recipient("sent@example.com"), "Subject", "Body"),
+        RenderedMessage(Recipient("group@example.com"), "Subject", "Body"),
+        RenderedMessage(Recipient("global@example.com"), "Subject", "Body"),
+        RenderedMessage(Recipient("both@example.com"), "Subject", "Body"),
+    ]
+    database = DeliveryDatabase(tmp_path / "mailer.sqlite3")
+    database.start_run("run-1", campaign.campaign_id, "send", 1)
+    database.record_delivery(
+        run_id="run-1", campaign_id=campaign.campaign_id, email="sent@example.com", status="sent"
+    )
+    database.finish_run("run-1", sent=1, failed=0, skipped=0)
+
+    targets, skipped = filter_send_targets(
+        PreparedCampaign(campaign=campaign, messages=messages),
+        database=database,
+        group_unsubscribed={"group@example.com", "both@example.com"},
+        global_unsubscribed={"global@example.com", "both@example.com"},
+    )
+
+    assert [item.recipient.email for item in targets] == [
+        "global@example.com",
+    ]
+    assert [status for _, status in skipped] == [
+        "skipped_already_sent",
+        "skipped_unsubscribed_group",
+        "skipped_unsubscribed_group",
+    ]
+
+
 def test_send_campaign_passes_prepared_attachments_to_test_and_send(
     monkeypatch, tmp_path: Path
 ) -> None:

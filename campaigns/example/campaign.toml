@@ -5,6 +5,7 @@ from_email = "sender@example.com"
 from_name = "Example Sender"
 reply_to_list = ["reply@example.com"]
 unsubscribe_group_id = 12345
+bypass_global_unsubscribe_management = false
 unsubscribe_url = "https://example.com/unsubscribe?group_id=12345"
 max_send_count = 100
 send_interval_seconds = 1.0

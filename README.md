@@ -21,6 +21,7 @@ HTML メール、本文内画像、PDF・PNG・JPEG 以外の添付、開封・�
 
 - 本番送信は `--confirm SEND`、テスト送信は `--confirm TEST` が必須です。
 - `test` と `send` は、送信元が SendGrid で検証済みであり、配信停止グループと Global Unsubscribes を取得できる場合だけ送信します。確認できない場合は 1 件も送信しません。
+- `bypass_global_unsubscribe_management = true` は Global Unsubscribes だけを回避し、このキャンペーンのグループ配信拒否、バウンス、スパム報告の抑止は維持します。既定値は `false` です。
 - 本番送信の重複判定には `campaign_id + email` を使用します。別の案内には新しい `campaign_id` を使用してください。テスト履歴は `test-<campaign_id>` として本番履歴から分離されます。
 - 添付は 1 ファイル 10 MiB、合計 15 MiB までです。実運用の宛先 CSV、添付、キャンペーン、SQLite DB、`.env` は Git にコミットしないでください。
 
@@ -91,6 +92,17 @@ uv run sendgrid-text-mailer send `
 ```
 
 `campaign.toml` では `from_email`、`from_name`、`reply_to_list`、`unsubscribe_group_id` を必須で指定します。`unsubscribe_url` を設定した場合は、本文内の `{unsubscribe_url}` が置換されます。宛名には `{recipient_block}` を使用できます。設定項目と本文の書式は[クイックスタート](docs/quick-start-ja.md)を参照してください。
+
+### Global Unsubscribes の回避
+
+既定では配信停止グループと Global Unsubscribes の宛先を除外します。グローバルまたは他のメルマガの配信拒否者にも、このキャンペーンだけ送信する場合は `campaign.toml` に明示します。このキャンペーンの配信停止グループに登録された宛先は常に除外されます。
+
+```toml
+# 既定値は false。true は Global Unsubscribes だけを回避する。
+bypass_global_unsubscribe_management = true
+```
+
+`true` でも送信元検証と配信停止リストの取得は実行し、取得に失敗した場合は送信しません。CLI に `Suppressions: GLOBAL UNSUBSCRIBES BYPASS ENABLED (group unsubscribes enforced)` と表示されることを確認してから送信してください。
 
 ### 添付ファイル
 

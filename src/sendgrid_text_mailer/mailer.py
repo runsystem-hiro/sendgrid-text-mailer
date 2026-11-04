@@ -10,6 +10,7 @@ from pathlib import Path
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import (
     Attachment,
+    BypassUnsubscribeManagement,
     ClickTracking,
     Disposition,
     FileContent,
@@ -17,6 +18,7 @@ from sendgrid.helpers.mail import (
     FileType,
     From,
     Mail,
+    MailSettings,
     OpenTracking,
     PlainTextContent,
     ReplyTo,
@@ -160,6 +162,10 @@ class SendGridGateway:
         tracking.click_tracking = ClickTracking(enable=False, enable_text=False)
         tracking.open_tracking = OpenTracking(enable=False)
         mail.tracking_settings = tracking
+        if self.config.bypass_global_unsubscribe_management:
+            mail_settings = MailSettings()
+            mail_settings.bypass_unsubscribe_management = BypassUnsubscribeManagement(True)
+            mail.mail_settings = mail_settings
         if self.config.reply_to_list:
             mail.reply_to_list = [ReplyTo(address) for address in self.config.reply_to_list]
         # The SendGrid helper prepends each attachment internally, so reverse the
